@@ -32,7 +32,7 @@ Version 2 separates the library engine from the content it contains:
 
 ## Installation
 
-1. When Library v1 is installed, deactivate it first. Do not uninstall its content.
+1. When Missouri Accessibility Library v1 is installed, deactivate it first. Do not uninstall its content.
 2. Upload the `reference-code-library` folder to `/wp-content/plugins/`, or install the ZIP through WordPress.
 3. Activate **Reference Code Library**.
 4. Open **Code Library → Add Code** to create entries manually, attach working-example screenshots, or **Code Library → Import / Export** to import a JSON, TXT, or portable ZIP pack.
@@ -44,6 +44,14 @@ Version 2 separates the library engine from the content it contains:
 [code_library]
 [code_collection slug="css-patterns"]
 [code_entry slug="visible-focus-example"]
+```
+
+Legacy v1 shortcodes remain supported:
+
+```text
+[mo_accessibility_library]
+[mo_accessibility_collection slug="css-patterns"]
+[mo_accessibility_pattern slug="visible-focus-example"]
 ```
 
 ## Library-pack schema
@@ -82,7 +90,7 @@ Scope rules to `.rcl-library`, omit `<style>` tags, and keep site-specific CSS o
 
 ## Upgrade compatibility
 
-The plugin intentionally retains the original internal post type, taxonomy, and metadata identifiers from Library v1. Existing entries remain visible when v2 replaces v1. User-facing labels and new package formats are generic.
+The plugin intentionally retains the original internal post type, taxonomy, and metadata identifiers from Missouri Accessibility Library v1. Existing entries remain visible when v2 replaces v1. User-facing labels and new package formats are generic.
 
 ## Development notes
 

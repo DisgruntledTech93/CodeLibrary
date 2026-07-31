@@ -5,8 +5,7 @@
  * Version: 2.2.0
  * Requires at least: 6.0
  * Requires PHP: 7.4
- * Author: RetechX LLC
- * Author URI: https://www.retechx.com/
+ * Author: Paul Washington
  * License: GPL-2.0-or-later
  * Text Domain: reference-code-library
  */
