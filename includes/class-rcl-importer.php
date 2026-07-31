@@ -4,21 +4,33 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class RCL_Importer {
-    const MAX_FILE_SIZE = 5242880; // 5 MB.
+    const MAX_FILE_SIZE       = 5242880;  // 5 MB for JSON/TXT.
+    const MAX_ZIP_FILE_SIZE   = 26214400; // 25 MB for portable packs.
+    const MAX_EXTRACTED_SIZE  = 52428800; // 50 MB after extraction.
+    const MAX_EXAMPLE_IMAGES  = 200;
+    const MAX_ENTRY_EXAMPLES  = 20;
 
     public static function prepare_upload( $file ) {
-        $data = self::read_uploaded_file( $file );
-        if ( is_wp_error( $data ) ) {
-            return $data;
+        self::cleanup_stale_imports();
+
+        $read = self::read_uploaded_file( $file );
+        if ( is_wp_error( $read ) ) {
+            return $read;
         }
 
-        $normalized = self::normalize_pack( $data );
+        $normalized = self::normalize_pack( $read['data'], $read['context'] );
         if ( is_wp_error( $normalized ) ) {
+            if ( ! empty( $read['context']['temp_dir'] ) ) {
+                self::delete_directory( $read['context']['temp_dir'] );
+            }
             return $normalized;
         }
 
         $preview = self::build_preview( $normalized );
         if ( is_wp_error( $preview ) ) {
+            if ( ! empty( $read['context']['temp_dir'] ) ) {
+                self::delete_directory( $read['context']['temp_dir'] );
+            }
             return $preview;
         }
 
@@ -40,6 +52,9 @@ final class RCL_Importer {
         }
 
         $result = self::commit( $data, $conflict_policy, $import_branding, $create_page );
+        if ( ! empty( $data['_import']['temp_dir'] ) ) {
+            self::delete_directory( $data['_import']['temp_dir'] );
+        }
         if ( ! is_wp_error( $result ) ) {
             delete_transient( $key );
         }
@@ -52,7 +67,7 @@ final class RCL_Importer {
 
     private static function read_uploaded_file( $file ) {
         if ( ! is_array( $file ) || empty( $file['tmp_name'] ) ) {
-            return new WP_Error( 'rcl_no_file', __( 'Choose a JSON or TXT library pack to upload.', 'reference-code-library' ) );
+            return new WP_Error( 'rcl_no_file', __( 'Choose a JSON, TXT, or ZIP library pack to upload.', 'reference-code-library' ) );
         }
 
         $error = isset( $file['error'] ) ? (int) $file['error'] : UPLOAD_ERR_NO_FILE;
@@ -60,19 +75,29 @@ final class RCL_Importer {
             return new WP_Error( 'rcl_upload_error', self::upload_error_message( $error ) );
         }
 
-        $size = isset( $file['size'] ) ? (int) $file['size'] : 0;
-        if ( $size <= 0 || $size > self::MAX_FILE_SIZE ) {
-            return new WP_Error( 'rcl_file_size', __( 'The library pack must be larger than 0 bytes and no larger than 5 MB.', 'reference-code-library' ) );
-        }
-
         $name      = sanitize_file_name( $file['name'] ?? '' );
         $extension = strtolower( pathinfo( $name, PATHINFO_EXTENSION ) );
-        if ( ! in_array( $extension, array( 'json', 'txt' ), true ) ) {
-            return new WP_Error( 'rcl_file_type', __( 'Only .json and .txt files containing valid JSON are accepted.', 'reference-code-library' ) );
+        if ( ! in_array( $extension, array( 'json', 'txt', 'zip' ), true ) ) {
+            return new WP_Error( 'rcl_file_type', __( 'Only .json, .txt, and .zip library packs are accepted.', 'reference-code-library' ) );
+        }
+
+        $size      = isset( $file['size'] ) ? (int) $file['size'] : 0;
+        $size_limit = 'zip' === $extension ? self::MAX_ZIP_FILE_SIZE : self::MAX_FILE_SIZE;
+        if ( $size <= 0 || $size > $size_limit ) {
+            return new WP_Error(
+                'rcl_file_size',
+                'zip' === $extension
+                    ? __( 'A ZIP library pack must be larger than 0 bytes and no larger than 25 MB.', 'reference-code-library' )
+                    : __( 'A JSON or TXT library pack must be larger than 0 bytes and no larger than 5 MB.', 'reference-code-library' )
+            );
         }
 
         if ( ! is_uploaded_file( $file['tmp_name'] ) ) {
             return new WP_Error( 'rcl_invalid_upload', __( 'The file was not received as a valid HTTP upload.', 'reference-code-library' ) );
+        }
+
+        if ( 'zip' === $extension ) {
+            return self::read_zip_pack( $file['tmp_name'] );
         }
 
         if ( ! is_readable( $file['tmp_name'] ) ) {
@@ -80,7 +105,203 @@ final class RCL_Importer {
         }
 
         $raw = file_get_contents( $file['tmp_name'] ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
-        if ( false === $raw || '' === trim( $raw ) ) {
+        $data = self::decode_json( $raw );
+        if ( is_wp_error( $data ) ) {
+            return $data;
+        }
+
+        return array(
+            'data'    => $data,
+            'context' => array( 'type' => 'json' ),
+        );
+    }
+
+    private static function read_zip_pack( $uploaded_file ) {
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+
+        if ( function_exists( 'wp_zip_file_is_valid' ) && ! wp_zip_file_is_valid( $uploaded_file ) ) {
+            return new WP_Error( 'rcl_invalid_zip', __( 'The uploaded ZIP file is invalid or corrupted.', 'reference-code-library' ) );
+        }
+
+        $preflight = self::preflight_zip( $uploaded_file );
+        if ( is_wp_error( $preflight ) ) {
+            return $preflight;
+        }
+
+        $temp_dir = trailingslashit( get_temp_dir() ) . 'rcl-import-' . time() . '-' . wp_generate_password( 8, false, false );
+        if ( ! wp_mkdir_p( $temp_dir ) ) {
+            return new WP_Error( 'rcl_temp_dir', __( 'WordPress could not create a temporary import directory.', 'reference-code-library' ) );
+        }
+
+        if ( ! WP_Filesystem() ) {
+            self::delete_directory( $temp_dir );
+            return new WP_Error( 'rcl_filesystem', __( 'WordPress could not initialize the filesystem for this ZIP import.', 'reference-code-library' ) );
+        }
+
+        $unzipped = unzip_file( $uploaded_file, $temp_dir );
+        if ( is_wp_error( $unzipped ) ) {
+            self::delete_directory( $temp_dir );
+            return new WP_Error( 'rcl_unzip', sprintf( __( 'The ZIP pack could not be extracted: %s', 'reference-code-library' ), $unzipped->get_error_message() ) );
+        }
+
+        $manifest = trailingslashit( $temp_dir ) . 'library.json';
+        if ( ! is_readable( $manifest ) ) {
+            self::delete_directory( $temp_dir );
+            return new WP_Error( 'rcl_zip_manifest', __( 'A portable ZIP pack must contain library.json at the archive root.', 'reference-code-library' ) );
+        }
+
+        $total_size  = 0;
+        $image_count = 0;
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator( $temp_dir, FilesystemIterator::SKIP_DOTS ),
+            RecursiveIteratorIterator::LEAVES_ONLY
+        );
+        foreach ( $iterator as $item ) {
+            if ( $item->isLink() || ! $item->isFile() ) {
+                self::delete_directory( $temp_dir );
+                return new WP_Error( 'rcl_zip_unsafe', __( 'The ZIP pack contains an unsupported link or filesystem item.', 'reference-code-library' ) );
+            }
+
+            $path     = $item->getPathname();
+            $relative = ltrim( str_replace( '\\', '/', substr( $path, strlen( $temp_dir ) ) ), '/' );
+            if ( 0 !== validate_file( $relative ) ) {
+                self::delete_directory( $temp_dir );
+                return new WP_Error( 'rcl_zip_path', __( 'The ZIP pack contains an unsafe file path.', 'reference-code-library' ) );
+            }
+
+            $size = (int) $item->getSize();
+            $total_size += $size;
+            if ( $total_size > self::MAX_EXTRACTED_SIZE ) {
+                self::delete_directory( $temp_dir );
+                return new WP_Error( 'rcl_zip_expanded_size', __( 'The extracted ZIP pack exceeds the 50 MB safety limit.', 'reference-code-library' ) );
+            }
+
+            if ( 'library.json' === $relative ) {
+                if ( $size > self::MAX_FILE_SIZE ) {
+                    self::delete_directory( $temp_dir );
+                    return new WP_Error( 'rcl_manifest_size', __( 'library.json exceeds the 5 MB manifest limit.', 'reference-code-library' ) );
+                }
+                continue;
+            }
+
+            if ( 0 !== strpos( $relative, 'images/' ) ) {
+                self::delete_directory( $temp_dir );
+                return new WP_Error( 'rcl_zip_contents', __( 'Portable ZIP packs may contain only library.json and image files inside images/.', 'reference-code-library' ) );
+            }
+
+            ++$image_count;
+            if ( $image_count > self::MAX_EXAMPLE_IMAGES ) {
+                self::delete_directory( $temp_dir );
+                return new WP_Error( 'rcl_zip_image_count', __( 'The ZIP pack contains more than 200 screenshots.', 'reference-code-library' ) );
+            }
+
+            $mime = self::validated_image_mime( $path );
+            if ( ! $mime ) {
+                self::delete_directory( $temp_dir );
+                return new WP_Error( 'rcl_zip_image_type', sprintf( __( 'The file "%s" is not a supported image.', 'reference-code-library' ), $relative ) );
+            }
+        }
+
+        $raw  = file_get_contents( $manifest ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+        $data = self::decode_json( $raw );
+        if ( is_wp_error( $data ) ) {
+            self::delete_directory( $temp_dir );
+            return $data;
+        }
+
+        return array(
+            'data'    => $data,
+            'context' => array(
+                'type'     => 'zip',
+                'temp_dir' => $temp_dir,
+            ),
+        );
+    }
+
+    private static function preflight_zip( $uploaded_file ) {
+        $items = array();
+
+        if ( class_exists( 'ZipArchive' ) ) {
+            $archive = new ZipArchive();
+            $opened  = $archive->open( $uploaded_file, ZipArchive::CHECKCONS );
+            if ( true !== $opened ) {
+                return new WP_Error( 'rcl_invalid_zip', __( 'The uploaded ZIP file is invalid or corrupted.', 'reference-code-library' ) );
+            }
+
+            for ( $index = 0; $index < $archive->numFiles; ++$index ) {
+                $stat = $archive->statIndex( $index );
+                if ( ! is_array( $stat ) ) {
+                    $archive->close();
+                    return new WP_Error( 'rcl_zip_stat', __( 'WordPress could not inspect every file in the ZIP pack.', 'reference-code-library' ) );
+                }
+                $items[] = array(
+                    'name'   => $stat['name'] ?? '',
+                    'size'   => (int) ( $stat['size'] ?? 0 ),
+                    'folder' => '/' === substr( (string) ( $stat['name'] ?? '' ), -1 ),
+                );
+            }
+            $archive->close();
+        } else {
+            require_once ABSPATH . 'wp-admin/includes/class-pclzip.php';
+            $archive = new PclZip( $uploaded_file );
+            $list    = $archive->listContent();
+            if ( 0 === $list || ! is_array( $list ) ) {
+                return new WP_Error( 'rcl_invalid_zip', __( 'The uploaded ZIP file is invalid or corrupted.', 'reference-code-library' ) );
+            }
+            foreach ( $list as $item ) {
+                $items[] = array(
+                    'name'   => $item['filename'] ?? '',
+                    'size'   => (int) ( $item['size'] ?? 0 ),
+                    'folder' => ! empty( $item['folder'] ),
+                );
+            }
+        }
+
+        $total_size  = 0;
+        $image_count = 0;
+        $has_manifest = false;
+
+        foreach ( $items as $item ) {
+            $name = ltrim( str_replace( '\\', '/', (string) $item['name'] ), '/' );
+            if ( ! $name || ! empty( $item['folder'] ) ) {
+                continue;
+            }
+            if ( 0 !== validate_file( $name ) ) {
+                return new WP_Error( 'rcl_zip_path', __( 'The ZIP pack contains an unsafe file path.', 'reference-code-library' ) );
+            }
+
+            $total_size += max( 0, (int) $item['size'] );
+            if ( $total_size > self::MAX_EXTRACTED_SIZE ) {
+                return new WP_Error( 'rcl_zip_expanded_size', __( 'The extracted ZIP pack exceeds the 50 MB safety limit.', 'reference-code-library' ) );
+            }
+
+            if ( 'library.json' === $name ) {
+                $has_manifest = true;
+                if ( (int) $item['size'] > self::MAX_FILE_SIZE ) {
+                    return new WP_Error( 'rcl_manifest_size', __( 'library.json exceeds the 5 MB manifest limit.', 'reference-code-library' ) );
+                }
+                continue;
+            }
+
+            if ( 0 !== strpos( $name, 'images/' ) ) {
+                return new WP_Error( 'rcl_zip_contents', __( 'Portable ZIP packs may contain only library.json and image files inside images/.', 'reference-code-library' ) );
+            }
+
+            ++$image_count;
+            if ( $image_count > self::MAX_EXAMPLE_IMAGES ) {
+                return new WP_Error( 'rcl_zip_image_count', __( 'The ZIP pack contains more than 200 screenshots.', 'reference-code-library' ) );
+            }
+        }
+
+        if ( ! $has_manifest ) {
+            return new WP_Error( 'rcl_zip_manifest', __( 'A portable ZIP pack must contain library.json at the archive root.', 'reference-code-library' ) );
+        }
+
+        return true;
+    }
+
+    private static function decode_json( $raw ) {
+        if ( false === $raw || '' === trim( (string) $raw ) ) {
             return new WP_Error( 'rcl_empty_file', __( 'The uploaded library pack is empty.', 'reference-code-library' ) );
         }
 
@@ -95,7 +316,6 @@ final class RCL_Importer {
                 )
             );
         }
-
         return $data;
     }
 
@@ -112,7 +332,7 @@ final class RCL_Importer {
         return $messages[ $error ] ?? __( 'The file upload failed.', 'reference-code-library' );
     }
 
-    public static function normalize_pack( $data ) {
+    public static function normalize_pack( $data, $context = array() ) {
         if ( isset( $data['patterns'] ) && ! isset( $data['entries'] ) ) {
             $data = self::convert_legacy_pack( $data );
         }
@@ -139,6 +359,7 @@ final class RCL_Importer {
             'branding'    => self::normalize_branding( $data['branding'] ?? array() ),
             'collections' => array(),
             'entries'     => array(),
+            '_import'     => is_array( $context ) ? $context : array(),
         );
 
         $collections = isset( $data['collections'] ) && is_array( $data['collections'] ) ? $data['collections'] : array();
@@ -147,15 +368,15 @@ final class RCL_Importer {
                 return new WP_Error( 'rcl_collection_type', sprintf( __( 'Collection %d is not an object.', 'reference-code-library' ), $index + 1 ) );
             }
 
-            $name = sanitize_text_field( $collection['name'] ?? '' );
-            $id   = sanitize_title( $collection['id'] ?? ( $collection['slug'] ?? $name ) );
-            if ( ! $id || ! $name ) {
+            $collection_name = sanitize_text_field( $collection['name'] ?? '' );
+            $id              = sanitize_title( $collection['id'] ?? ( $collection['slug'] ?? $collection_name ) );
+            if ( ! $id || ! $collection_name ) {
                 return new WP_Error( 'rcl_collection_required', sprintf( __( 'Collection %d must include an id and name.', 'reference-code-library' ), $index + 1 ) );
             }
 
             $normalized['collections'][ $id ] = array(
                 'id'          => $id,
-                'name'        => $name,
+                'name'        => $collection_name,
                 'description' => sanitize_textarea_field( $collection['description'] ?? '' ),
                 'icon'        => sanitize_text_field( $collection['icon'] ?? '' ),
                 'class'       => sanitize_html_class( $collection['class'] ?? $id ),
@@ -202,6 +423,16 @@ final class RCL_Importer {
                 }
             }
 
+            $examples_provided = array_key_exists( 'examples', $entry );
+            $examples          = array();
+            if ( $examples_provided ) {
+                $example_result = self::normalize_examples( $entry['examples'], $title, $context );
+                if ( is_wp_error( $example_result ) ) {
+                    return $example_result;
+                }
+                $examples = $example_result;
+            }
+
             $code = isset( $entry['code'] ) && is_string( $entry['code'] ) ? wp_check_invalid_utf8( $entry['code'] ) : '';
             $code = str_replace( array( "\r\n", "\r" ), "\n", $code );
 
@@ -218,12 +449,97 @@ final class RCL_Importer {
                 'code'                 => $code,
                 'reference_url'        => esc_url_raw( $entry['reference_url'] ?? ( $entry['source_url'] ?? '' ) ),
                 'tags'                 => array_values( array_unique( $tags ) ),
+                'examples'             => $examples,
+                'examples_provided'    => $examples_provided,
                 'order'                => (int) ( $entry['order'] ?? ( $index + 1 ) ),
             );
         }
 
         $normalized['collections'] = array_values( $normalized['collections'] );
         return $normalized;
+    }
+
+    private static function normalize_examples( $examples, $entry_title, $context ) {
+        if ( null === $examples ) {
+            return array();
+        }
+        if ( ! is_array( $examples ) ) {
+            return new WP_Error( 'rcl_examples_type', sprintf( __( 'Entry "%s" has an examples value that is not an array.', 'reference-code-library' ), $entry_title ) );
+        }
+        if ( count( $examples ) > self::MAX_ENTRY_EXAMPLES ) {
+            return new WP_Error( 'rcl_examples_count', sprintf( __( 'Entry "%s" contains more than 20 screenshots.', 'reference-code-library' ), $entry_title ) );
+        }
+
+        $normalized = array();
+        foreach ( $examples as $index => $example ) {
+            if ( ! is_array( $example ) ) {
+                return new WP_Error( 'rcl_example_type', sprintf( __( 'Screenshot %1$d for entry "%2$s" is not an object.', 'reference-code-library' ), $index + 1, $entry_title ) );
+            }
+
+            $file = isset( $example['file'] ) ? str_replace( '\\', '/', trim( (string) $example['file'] ) ) : '';
+            $file = ltrim( $file, '/' );
+            $url  = esc_url_raw( $example['url'] ?? '' );
+
+            if ( $file ) {
+                if ( 0 !== validate_file( $file ) || 0 !== strpos( $file, 'images/' ) ) {
+                    return new WP_Error( 'rcl_example_path', sprintf( __( 'Screenshot %1$d for entry "%2$s" has an unsafe file path.', 'reference-code-library' ), $index + 1, $entry_title ) );
+                }
+                if ( empty( $context['temp_dir'] ) ) {
+                    return new WP_Error( 'rcl_example_requires_zip', sprintf( __( 'Entry "%s" references a local screenshot file, so it must be imported from a ZIP pack.', 'reference-code-library' ), $entry_title ) );
+                }
+
+                $base = realpath( $context['temp_dir'] );
+                $path = realpath( trailingslashit( $context['temp_dir'] ) . $file );
+                if ( ! $base || ! $path || 0 !== strpos( $path, trailingslashit( $base ) ) || ! is_readable( $path ) || ! self::validated_image_mime( $path ) ) {
+                    return new WP_Error( 'rcl_example_missing', sprintf( __( 'Screenshot file "%1$s" for entry "%2$s" is missing or invalid.', 'reference-code-library' ), $file, $entry_title ) );
+                }
+            } elseif ( $url ) {
+                $scheme = strtolower( (string) wp_parse_url( $url, PHP_URL_SCHEME ) );
+                if ( ! in_array( $scheme, array( 'http', 'https' ), true ) ) {
+                    return new WP_Error( 'rcl_example_url', sprintf( __( 'Screenshot %1$d for entry "%2$s" must use an HTTP or HTTPS URL.', 'reference-code-library' ), $index + 1, $entry_title ) );
+                }
+            } else {
+                return new WP_Error( 'rcl_example_source', sprintf( __( 'Screenshot %1$d for entry "%2$s" must include either file or url.', 'reference-code-library' ), $index + 1, $entry_title ) );
+            }
+
+            $normalized[] = array(
+                'file'    => $file,
+                'url'     => $url,
+                'type'    => RCL_Library::sanitize_example_type( $example['type'] ?? 'result' ),
+                'alt'     => sanitize_text_field( $example['alt'] ?? '' ),
+                'caption' => sanitize_textarea_field( $example['caption'] ?? '' ),
+                'order'   => (int) ( $example['order'] ?? ( ( $index + 1 ) * 10 ) ),
+            );
+        }
+
+        usort(
+            $normalized,
+            static function( $a, $b ) {
+                return (int) $a['order'] <=> (int) $b['order'];
+            }
+        );
+        return $normalized;
+    }
+
+    private static function validated_image_mime( $path ) {
+        if ( ! is_readable( $path ) ) {
+            return '';
+        }
+
+        $mimes = array(
+            'jpg|jpeg|jpe' => 'image/jpeg',
+            'png'          => 'image/png',
+            'gif'          => 'image/gif',
+            'webp'         => 'image/webp',
+        );
+        $checked = wp_check_filetype_and_ext( $path, basename( $path ), $mimes );
+        $actual  = wp_get_image_mime( $path );
+
+        if ( empty( $checked['ext'] ) || empty( $checked['type'] ) || ! $actual || $checked['type'] !== $actual ) {
+            return '';
+        }
+
+        return $actual;
     }
 
     private static function normalize_branding( $branding ) {
@@ -333,22 +649,26 @@ final class RCL_Importer {
             'branding'    => ! empty( $data['branding'] ),
             'collections' => count( $data['collections'] ),
             'entries'     => count( $data['entries'] ),
+            'screenshots' => 0,
             'new'         => 0,
             'existing'    => 0,
             'items'       => array(),
         );
 
         foreach ( $data['entries'] as $entry ) {
-            $existing = self::find_entry( $entry['id'] );
+            $existing   = self::find_entry( $entry['id'] );
+            $screenshots = count( $entry['examples'] );
+            $summary['screenshots'] += $screenshots;
             if ( $existing ) {
                 ++$summary['existing'];
             } else {
                 ++$summary['new'];
             }
             $summary['items'][] = array(
-                'id'       => $entry['id'],
-                'title'    => $entry['title'],
-                'existing' => (bool) $existing,
+                'id'          => $entry['id'],
+                'title'       => $entry['title'],
+                'screenshots' => $screenshots,
+                'existing'    => (bool) $existing,
             );
         }
 
@@ -399,12 +719,13 @@ final class RCL_Importer {
         }
 
         $result = array(
-            'created'  => 0,
-            'updated'  => 0,
-            'skipped'  => 0,
-            'errors'   => array(),
-            'page_id'  => 0,
-            'branding' => false,
+            'created'        => 0,
+            'updated'        => 0,
+            'skipped'        => 0,
+            'media_imported' => 0,
+            'errors'         => array(),
+            'page_id'        => 0,
+            'branding'       => false,
         );
 
         foreach ( $data['entries'] as $entry ) {
@@ -470,6 +791,26 @@ final class RCL_Importer {
 
             self::assign_named_term( $post_id, $entry['status'], RCL_Library::TAX_STATUS );
             wp_set_object_terms( $post_id, $entry['tags'], RCL_Library::TAX_TAG, false );
+
+            if ( $entry['examples_provided'] ) {
+                $existing_examples = RCL_Library::sanitize_examples( get_post_meta( $post_id, RCL_Library::META_EXAMPLES, true ) );
+                if ( ! $entry['examples'] ) {
+                    update_post_meta( $post_id, RCL_Library::META_EXAMPLES, array() );
+                } else {
+                    $media_result = self::import_examples( $entry['examples'], $post_id, $entry['title'], $data['_import'] ?? array() );
+                    $result['media_imported'] += $media_result['imported'];
+                    $errors = array_merge( $errors, $media_result['errors'] );
+
+                    if ( $media_result['examples'] ) {
+                        update_post_meta( $post_id, RCL_Library::META_EXAMPLES, RCL_Library::sanitize_examples( $media_result['examples'] ) );
+                    } elseif ( ! $existing_id ) {
+                        update_post_meta( $post_id, RCL_Library::META_EXAMPLES, array() );
+                    } else {
+                        update_post_meta( $post_id, RCL_Library::META_EXAMPLES, $existing_examples );
+                        $errors[] = sprintf( 'Entry "%s": no screenshots could be imported, so the existing gallery was preserved.', $entry['title'] );
+                    }
+                }
+            }
         }
 
         if ( $import_branding && ! empty( $data['branding'] ) ) {
@@ -505,6 +846,81 @@ final class RCL_Importer {
         return $result;
     }
 
+    private static function import_examples( $examples, $post_id, $entry_title, $context ) {
+        $result = array(
+            'examples' => array(),
+            'imported' => 0,
+            'errors'   => array(),
+        );
+
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/media.php';
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+
+        foreach ( $examples as $index => $example ) {
+            $attachment_id = 0;
+
+            if ( ! empty( $example['file'] ) && ! empty( $context['temp_dir'] ) ) {
+                $source = realpath( trailingslashit( $context['temp_dir'] ) . $example['file'] );
+                $base   = realpath( $context['temp_dir'] );
+                if ( $source && $base && 0 === strpos( $source, trailingslashit( $base ) ) && is_readable( $source ) ) {
+                    $attachment_id = self::sideload_local_image( $source, $post_id, $example['caption'] );
+                } else {
+                    $attachment_id = new WP_Error( 'rcl_missing_screenshot', __( 'The screenshot file was missing from temporary storage.', 'reference-code-library' ) );
+                }
+            } elseif ( ! empty( $example['url'] ) ) {
+                $attachment_id = media_sideload_image( $example['url'], $post_id, $example['caption'], 'id' );
+            }
+
+            if ( is_wp_error( $attachment_id ) || ! $attachment_id ) {
+                $message = is_wp_error( $attachment_id ) ? $attachment_id->get_error_message() : __( 'Unknown media import error.', 'reference-code-library' );
+                $result['errors'][] = sprintf( 'Entry "%1$s", screenshot %2$d: %3$s', $entry_title, $index + 1, $message );
+                continue;
+            }
+
+            $attachment_id = (int) $attachment_id;
+            update_post_meta( $attachment_id, '_wp_attachment_image_alt', $example['alt'] );
+            wp_update_post(
+                array(
+                    'ID'           => $attachment_id,
+                    'post_parent'  => $post_id,
+                    'post_excerpt' => $example['caption'],
+                )
+            );
+
+            $result['examples'][] = array(
+                'attachment_id' => $attachment_id,
+                'type'          => $example['type'],
+                'alt'           => $example['alt'],
+                'caption'       => $example['caption'],
+                'order'         => $example['order'],
+            );
+            ++$result['imported'];
+        }
+
+        return $result;
+    }
+
+    private static function sideload_local_image( $source, $post_id, $caption ) {
+        $temp_file = wp_tempnam( basename( $source ) );
+        if ( ! $temp_file || ! copy( $source, $temp_file ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_copy
+            if ( $temp_file ) {
+                wp_delete_file( $temp_file );
+            }
+            return new WP_Error( 'rcl_screenshot_copy', __( 'The screenshot could not be copied for Media Library import.', 'reference-code-library' ) );
+        }
+
+        $file_array = array(
+            'name'     => sanitize_file_name( basename( $source ) ),
+            'tmp_name' => $temp_file,
+        );
+        $attachment_id = media_handle_sideload( $file_array, $post_id, $caption );
+        if ( is_wp_error( $attachment_id ) && file_exists( $temp_file ) ) {
+            wp_delete_file( $temp_file );
+        }
+        return $attachment_id;
+    }
+
     private static function assign_named_term( $post_id, $name, $taxonomy ) {
         $name = sanitize_text_field( $name );
         if ( ! $name ) {
@@ -535,5 +951,40 @@ final class RCL_Importer {
             )
         );
         return $posts ? (int) $posts[0] : 0;
+    }
+
+    private static function cleanup_stale_imports() {
+        $base = trailingslashit( get_temp_dir() );
+        $dirs = glob( $base . 'rcl-import-*', GLOB_ONLYDIR );
+        if ( ! is_array( $dirs ) ) {
+            return;
+        }
+
+        $cutoff = time() - DAY_IN_SECONDS;
+        foreach ( $dirs as $directory ) {
+            $modified = @filemtime( $directory ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+            if ( $modified && $modified < $cutoff ) {
+                self::delete_directory( $directory );
+            }
+        }
+    }
+
+    private static function delete_directory( $directory ) {
+        if ( ! $directory || ! is_dir( $directory ) ) {
+            return;
+        }
+
+        $items = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator( $directory, FilesystemIterator::SKIP_DOTS ),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ( $items as $item ) {
+            if ( $item->isDir() ) {
+                @rmdir( $item->getPathname() ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+            } else {
+                wp_delete_file( $item->getPathname() );
+            }
+        }
+        @rmdir( $directory ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
     }
 }

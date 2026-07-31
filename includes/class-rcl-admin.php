@@ -86,6 +86,37 @@ final class RCL_Admin {
             RCL_VERSION
         );
 
+        if ( RCL_Library::POST_TYPE === $screen->post_type && 'post' === $screen->base ) {
+            wp_enqueue_media();
+            wp_enqueue_script(
+                'rcl-entry-examples',
+                RCL_URL . 'assets/js/entry-examples.js',
+                array( 'jquery' ),
+                RCL_VERSION,
+                true
+            );
+            wp_localize_script(
+                'rcl-entry-examples',
+                'rclEntryExamples',
+                array(
+                    'chooseTitle'  => __( 'Choose working-example screenshots', 'reference-code-library' ),
+                    'useImages'    => __( 'Add selected screenshots', 'reference-code-library' ),
+                    'example'      => __( 'Example', 'reference-code-library' ),
+                    'typeLabel'    => __( 'Example type', 'reference-code-library' ),
+                    'altLabel'     => __( 'Alternative text', 'reference-code-library' ),
+                    'altHelp'      => __( 'Describe the result demonstrated by the screenshot. Leave blank only when it is decorative.', 'reference-code-library' ),
+                    'captionLabel' => __( 'Caption', 'reference-code-library' ),
+                    'moveUp'       => __( 'Move up', 'reference-code-library' ),
+                    'moveDown'     => __( 'Move down', 'reference-code-library' ),
+                    'remove'       => __( 'Remove', 'reference-code-library' ),
+                    'openFullSize' => __( 'Open full-size screenshot in a new tab', 'reference-code-library' ),
+                    'maxExamples'  => 20,
+                    'maxMessage'   => __( 'A code entry can contain up to 20 working-example screenshots. The remaining selected images were not added.', 'reference-code-library' ),
+                    'types'        => RCL_Library::get_example_types(),
+                )
+            );
+        }
+
         if ( false !== strpos( (string) $screen->id, 'rcl-appearance' ) ) {
             wp_enqueue_media();
             wp_enqueue_script(
@@ -163,7 +194,7 @@ final class RCL_Admin {
         }
 
         echo '<div class="wrap rcl-admin-wrap"><h1>Import / Export</h1>';
-        echo '<p class="rcl-admin-lead">Move complete code libraries between WordPress sites using a validated JSON pack. Imported code is stored as inert reference text and is never executed.</p>';
+        echo '<p class="rcl-admin-lead">Move complete code libraries between WordPress sites using validated JSON, TXT, or portable ZIP packs. ZIP packs can include working-example screenshots. Imported code remains inert reference text and is never executed.</p>';
 
         if ( $error ) {
             echo '<div class="notice notice-error inline"><p>' . esc_html( $error->get_error_message() ) . '</p></div>';
@@ -177,6 +208,9 @@ final class RCL_Admin {
                 (int) $result['skipped']
             );
             echo '<div class="notice notice-success inline"><p><strong>Import complete:</strong> ' . esc_html( $message ) . '</p>';
+            if ( ! empty( $result['media_imported'] ) ) {
+                echo '<p>' . esc_html( sprintf( _n( '%d screenshot was added to the Media Library.', '%d screenshots were added to the Media Library.', (int) $result['media_imported'], 'reference-code-library' ), (int) $result['media_imported'] ) ) . '</p>';
+            }
             if ( ! empty( $result['branding'] ) ) {
                 echo '<p>The library pack branding was applied.</p>';
             }
@@ -207,7 +241,7 @@ final class RCL_Admin {
         echo '<section class="rcl-admin-card"><h2>Pack templates</h2><p>Start with a predictable schema instead of inventing field names by hand.</p>';
         echo '<p><a class="button" href="' . esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=rcl_download_template' ), 'rcl_download_template' ) ) . '">Download blank template</a></p>';
         echo '<p><a class="button" href="' . esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=rcl_download_example' ), 'rcl_download_example' ) ) . '">Download example pack</a></p>';
-        echo '<p class="description">Both files use the <code>reference-code-library/v2</code> schema. A <code>.txt</code> file is also accepted when its contents are valid JSON.</p></section>';
+        echo '<p class="description">Both files use the <code>reference-code-library/v2</code> schema. JSON-formatted <code>.txt</code> files remain supported. Portable ZIP packs contain <code>library.json</code> and an <code>images/</code> folder.</p></section>';
         echo '</div>';
 
         $this->render_export_section();
@@ -218,8 +252,8 @@ final class RCL_Admin {
         echo '<form method="post" enctype="multipart/form-data">';
         wp_nonce_field( 'rcl_preview_import_action', 'rcl_preview_import_nonce' );
         echo '<p><label for="rcl_import_file"><strong>Library pack</strong></label></p>';
-        echo '<input type="file" id="rcl_import_file" name="rcl_import_file" accept=".json,.txt,application/json,text/plain" required>';
-        echo '<p class="description">Maximum file size: 5 MB. The file is parsed from temporary storage and is not added to the Media Library.</p>';
+        echo '<input type="file" id="rcl_import_file" name="rcl_import_file" accept=".json,.txt,.zip,application/json,text/plain,application/zip" required>';
+        echo '<p class="description">Maximum size: 5 MB for JSON/TXT or 25 MB for ZIP. Screenshots inside a validated ZIP are added to the Media Library only after you confirm the import.</p>';
         submit_button( 'Validate and preview', 'primary', 'rcl_preview_import', false );
         echo '</form>';
     }
@@ -229,12 +263,12 @@ final class RCL_Admin {
         if ( ! empty( $preview['pack']['description'] ) ) {
             echo '<p>' . esc_html( $preview['pack']['description'] ) . '</p>';
         }
-        echo '<dl><div><dt>Collections</dt><dd>' . esc_html( (string) $preview['collections'] ) . '</dd></div><div><dt>Entries</dt><dd>' . esc_html( (string) $preview['entries'] ) . '</dd></div><div><dt>New</dt><dd>' . esc_html( (string) $preview['new'] ) . '</dd></div><div><dt>Existing</dt><dd>' . esc_html( (string) $preview['existing'] ) . '</dd></div></dl></div>';
+        echo '<dl><div><dt>Collections</dt><dd>' . esc_html( (string) $preview['collections'] ) . '</dd></div><div><dt>Entries</dt><dd>' . esc_html( (string) $preview['entries'] ) . '</dd></div><div><dt>Screenshots</dt><dd>' . esc_html( (string) ( $preview['screenshots'] ?? 0 ) ) . '</dd></div><div><dt>New</dt><dd>' . esc_html( (string) $preview['new'] ) . '</dd></div><div><dt>Existing</dt><dd>' . esc_html( (string) $preview['existing'] ) . '</dd></div></dl></div>';
 
         if ( ! empty( $preview['items'] ) ) {
-            echo '<details class="rcl-preview-items"><summary>Review detected entries</summary><div class="rcl-preview-table-wrap"><table class="widefat striped"><thead><tr><th>Entry</th><th>ID</th><th>Result</th></tr></thead><tbody>';
+            echo '<details class="rcl-preview-items"><summary>Review detected entries</summary><div class="rcl-preview-table-wrap"><table class="widefat striped"><thead><tr><th>Entry</th><th>ID</th><th>Screenshots</th><th>Result</th></tr></thead><tbody>';
             foreach ( $preview['items'] as $item ) {
-                echo '<tr><td>' . esc_html( $item['title'] ) . '</td><td><code>' . esc_html( $item['id'] ) . '</code></td><td>' . ( $item['existing'] ? 'Existing entry' : 'New entry' ) . '</td></tr>';
+                echo '<tr><td>' . esc_html( $item['title'] ) . '</td><td><code>' . esc_html( $item['id'] ) . '</code></td><td>' . esc_html( (string) ( $item['screenshots'] ?? 0 ) ) . '</td><td>' . ( $item['existing'] ? 'Existing entry' : 'New entry' ) . '</td></tr>';
             }
             echo '</tbody></table></div></details>';
         }
@@ -274,7 +308,7 @@ final class RCL_Admin {
             )
         );
 
-        echo '<section class="rcl-admin-card rcl-export-card"><h2>Export a library pack</h2><p>Export the complete library, one collection, or a hand-picked set of entries.</p>';
+        echo '<section class="rcl-admin-card rcl-export-card"><h2>Export a library pack</h2><p>Export the complete library, one collection, or a hand-picked set of entries. Exports containing screenshots are packaged as portable ZIP files.</p>';
         echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
         echo '<input type="hidden" name="action" value="rcl_export_library">';
         wp_nonce_field( 'rcl_export_library', 'rcl_export_nonce' );
@@ -306,7 +340,8 @@ final class RCL_Admin {
         echo '</details>';
 
         echo '<p><label><input type="checkbox" name="rcl_export_branding" value="1"> Include the current library title, colors, and display settings</label></p>';
-        submit_button( 'Download JSON pack', 'primary', 'submit', false, $entries ? array() : array( 'disabled' => 'disabled' ) );
+        echo '<p><label><input type="checkbox" name="rcl_export_examples" value="1" checked> Include working-example screenshots</label><br><span class="description">When selected entries contain screenshots, the download is a ZIP containing <code>library.json</code> and an <code>images/</code> folder. Without screenshots, the export remains JSON.</span></p>';
+        submit_button( 'Download library pack', 'primary', 'submit', false, $entries ? array() : array( 'disabled' => 'disabled' ) );
         echo '</form></section>';
     }
 
@@ -318,6 +353,7 @@ final class RCL_Admin {
 
         $scope            = sanitize_key( wp_unslash( $_POST['rcl_export_scope'] ?? 'all' ) );
         $include_branding = ! empty( $_POST['rcl_export_branding'] );
+        $include_examples = ! empty( $_POST['rcl_export_examples'] );
         $post_ids         = array();
         $collection       = '';
 
@@ -334,9 +370,9 @@ final class RCL_Admin {
             }
         }
 
-        $pack     = RCL_Exporter::build_pack( $post_ids, $collection, $include_branding );
-        $filename = sanitize_title( $pack['pack']['name'] ) . '-library-pack.json';
-        RCL_Exporter::send_download( $pack, $filename );
+        $pack     = RCL_Exporter::build_pack( $post_ids, $collection, $include_branding, $include_examples );
+        $filename = sanitize_title( $pack['pack']['name'] ) . '-library-pack';
+        RCL_Exporter::send_library_pack( $pack, $filename );
     }
 
     public function handle_template_download() {
@@ -451,8 +487,8 @@ final class RCL_Admin {
 
         echo '<div class="wrap rcl-admin-wrap"><h1>Code Library Help</h1><div class="rcl-admin-grid">';
         echo '<section class="rcl-admin-card"><h2>Place the library</h2><p>Use the Gutenberg block named <strong>Code Library</strong>, or add one of these shortcodes to a page:</p><p><code>[code_library]</code></p><p><code>[code_collection slug="css"]</code></p><p><code>[code_entry slug="visible-focus-example"]</code></p><p>Legacy v1 shortcodes continue to render.</p></section>';
-        echo '<section class="rcl-admin-card"><h2>Build entries</h2><p>Use <strong>Code Library → Add Code</strong> for manual entry. Add the title, context fields, language, inert code text, collection, status, and optional tags.</p><p>The stable import ID is generated automatically from the title and remains hidden from editors.</p></section>';
-        echo '<section class="rcl-admin-card"><h2>Import safely</h2><p>Imports accept only JSON-formatted <code>.json</code> or <code>.txt</code> files up to 5 MB. Every pack is validated and previewed before WordPress records are created or updated.</p></section>';
+        echo '<section class="rcl-admin-card"><h2>Build entries</h2><p>Use <strong>Code Library → Add Code</strong> for manual entry. Add the title, context fields, language, inert code text, collection, status, optional tags, and working-example screenshots.</p><p>Each screenshot can be labeled as a before, after, result, configuration, inspector, mobile, test, or other view. Add useful alternative text and a visible caption. The stable import ID is generated automatically from the title and remains hidden from editors.</p></section>';
+        echo '<section class="rcl-admin-card"><h2>Import safely</h2><p>Imports accept JSON-formatted <code>.json</code> or <code>.txt</code> files up to 5 MB, plus portable <code>.zip</code> packs up to 25 MB. ZIP packs may include <code>library.json</code> and validated images inside <code>images/</code>. Every pack is previewed before records or Media Library attachments are created.</p></section>';
         echo '<section class="rcl-admin-card"><h2>Execution boundary</h2><p>This plugin is a documentation and reference system. It does not evaluate PHP, inject JavaScript, apply CSS, or execute imported code.</p></section>';
         echo '</div></div>';
     }

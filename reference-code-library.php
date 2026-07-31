@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Reference Code Library
- * Description: Build, brand, import, export, and publish a searchable reference library of code examples without executing the stored code.
- * Version: 2.0.0
+ * Description: Build, illustrate, brand, import, export, and publish a searchable reference library of code examples without executing the stored code.
+ * Version: 2.1.0
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * Author: Paul Washington
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'RCL_VERSION', '2.0.0' );
+define( 'RCL_VERSION', '2.1.0' );
 define( 'RCL_FILE', __FILE__ );
 define( 'RCL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'RCL_URL', plugin_dir_url( __FILE__ ) );

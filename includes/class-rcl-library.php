@@ -13,6 +13,7 @@ final class RCL_Library {
     const TAX_STATUS     = 'moa_status';
     const TAX_TAG        = 'rcl_code_tag';
     const OPTION_KEY     = 'rcl_library_settings';
+    const META_EXAMPLES  = '_rcl_examples';
 
     private static $instance = null;
     private $active_page_id  = 0;
@@ -395,6 +396,65 @@ final class RCL_Library {
         }
 
         return $output;
+    }
+
+    public static function get_example_types() {
+        return array(
+            'before'        => __( 'Before', 'reference-code-library' ),
+            'after'         => __( 'After', 'reference-code-library' ),
+            'result'        => __( 'Working result', 'reference-code-library' ),
+            'configuration' => __( 'Configuration', 'reference-code-library' ),
+            'inspector'     => __( 'Inspector / developer tools', 'reference-code-library' ),
+            'mobile'        => __( 'Mobile / zoomed view', 'reference-code-library' ),
+            'test'          => __( 'Accessibility test result', 'reference-code-library' ),
+            'other'         => __( 'Other example', 'reference-code-library' ),
+        );
+    }
+
+    public static function sanitize_example_type( $type ) {
+        $type  = sanitize_key( $type );
+        $types = self::get_example_types();
+        return isset( $types[ $type ] ) ? $type : 'result';
+    }
+
+    public static function sanitize_examples( $examples ) {
+        if ( ! is_array( $examples ) ) {
+            return array();
+        }
+
+        $clean = array();
+        foreach ( array_slice( $examples, 0, 20 ) as $index => $example ) {
+            if ( ! is_array( $example ) ) {
+                continue;
+            }
+
+            $attachment_id = absint( $example['attachment_id'] ?? 0 );
+            if ( ! $attachment_id || 'attachment' !== get_post_type( $attachment_id ) || ! wp_attachment_is_image( $attachment_id ) ) {
+                continue;
+            }
+
+            $clean[] = array(
+                'attachment_id' => $attachment_id,
+                'type'          => self::sanitize_example_type( $example['type'] ?? 'result' ),
+                'alt'           => sanitize_text_field( $example['alt'] ?? '' ),
+                'caption'       => sanitize_textarea_field( $example['caption'] ?? '' ),
+                'order'         => (int) ( $example['order'] ?? ( ( $index + 1 ) * 10 ) ),
+            );
+        }
+
+        usort(
+            $clean,
+            static function( $a, $b ) {
+                return (int) $a['order'] <=> (int) $b['order'];
+            }
+        );
+
+        foreach ( $clean as $index => &$example ) {
+            $example['order'] = ( $index + 1 ) * 10;
+        }
+        unset( $example );
+
+        return $clean;
     }
 
     public function shortcode_library( $atts = array() ) {
@@ -812,6 +872,47 @@ final class RCL_Library {
             echo '</div>';
         }
 
+        $examples = self::sanitize_examples( get_post_meta( $item->ID, self::META_EXAMPLES, true ) );
+        if ( $examples ) {
+            $types = self::get_example_types();
+            echo '<section class="rcl-examples" aria-labelledby="rcl-examples-heading-' . (int) $item->ID . '">';
+            echo '<h3 id="rcl-examples-heading-' . (int) $item->ID . '">' . esc_html__( 'Working examples', 'reference-code-library' ) . '</h3>';
+            echo '<div class="rcl-example-grid">';
+            foreach ( $examples as $example ) {
+                $attachment_id = (int) $example['attachment_id'];
+                $full_url      = wp_get_attachment_url( $attachment_id );
+                if ( ! $full_url ) {
+                    continue;
+                }
+
+                $type_label = $types[ $example['type'] ] ?? $types['result'];
+                $link_label = $example['caption']
+                    ? sprintf( __( 'Open full-size example: %s', 'reference-code-library' ), $example['caption'] )
+                    : sprintf( __( 'Open full-size %s image for %s', 'reference-code-library' ), strtolower( $type_label ), get_the_title( $item ) );
+
+                echo '<figure class="rcl-example">';
+                echo '<div class="rcl-example__image-wrap">';
+                echo wp_get_attachment_image(
+                    $attachment_id,
+                    'large',
+                    false,
+                    array(
+                        'class'   => 'rcl-example__image',
+                        'alt'     => $example['alt'],
+                        'loading' => 'lazy',
+                    )
+                ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+                echo '</div>';
+                echo '<figcaption><span class="rcl-example__type">' . esc_html( $type_label ) . '</span>';
+                if ( $example['caption'] ) {
+                    echo '<span class="rcl-example__caption">' . esc_html( $example['caption'] ) . '</span>';
+                }
+                echo '<a class="rcl-example__full-link" href="' . esc_url( $full_url ) . '" aria-label="' . esc_attr( $link_label ) . '">' . esc_html__( 'Open full-size example', 'reference-code-library' ) . '</a>';
+                echo '</figcaption></figure>';
+            }
+            echo '</div></section>';
+        }
+
         if ( $code ) {
             $code_id = 'rcl-code-' . (int) $item->ID;
             echo '<details class="rcl-code-details"><summary>View and copy the code</summary><div class="rcl-code-toolbar"><span>' . esc_html( strtoupper( $language ?: 'CODE' ) ) . '</span><button type="button" class="rcl-copy-button" data-copy-target="' . esc_attr( $code_id ) . '">Copy code</button></div><pre><code id="' . esc_attr( $code_id ) . '" class="language-' . esc_attr( sanitize_html_class( $language ?: 'text' ) ) . '">' . esc_html( $code ) . '</code></pre></details>';
@@ -912,6 +1013,14 @@ final class RCL_Library {
             'normal',
             'high'
         );
+        add_meta_box(
+            'rcl-working-examples',
+            __( 'Working Examples', 'reference-code-library' ),
+            array( $this, 'render_examples_meta_box' ),
+            self::POST_TYPE,
+            'normal',
+            'default'
+        );
     }
 
     public function render_entry_meta_box( $post ) {
@@ -938,6 +1047,43 @@ final class RCL_Library {
             }
             echo '<span class="description">' . esc_html( $spec[2] ) . '</span></p>';
         }
+        echo '</div>';
+    }
+
+    public function render_examples_meta_box( $post ) {
+        $examples = self::sanitize_examples( get_post_meta( $post->ID, self::META_EXAMPLES, true ) );
+        $types    = self::get_example_types();
+
+        echo '<p>' . esc_html__( 'Add up to 20 screenshots that show the code before, after, configured, tested, or working in place. Images remain in the WordPress Media Library.', 'reference-code-library' ) . '</p>';
+        echo '<p><button type="button" class="button button-secondary" data-rcl-add-examples>' . esc_html__( 'Add screenshots', 'reference-code-library' ) . '</button></p>';
+        echo '<p class="description" data-rcl-examples-empty' . ( $examples ? ' hidden' : '' ) . '>' . esc_html__( 'No screenshots have been added to this code entry yet.', 'reference-code-library' ) . '</p>';
+        echo '<div class="rcl-examples-admin-list' . ( $examples ? '' : ' is-empty' ) . '" data-rcl-examples-list>';
+
+        foreach ( $examples as $index => $example ) {
+            $preview = wp_get_attachment_image_url( (int) $example['attachment_id'], 'medium' );
+            $full    = wp_get_attachment_url( (int) $example['attachment_id'] );
+            if ( ! $preview || ! $full ) {
+                continue;
+            }
+
+            echo '<div class="rcl-example-row" data-rcl-example-index="' . esc_attr( (string) $index ) . '">';
+            echo '<div class="rcl-example-row__preview"><a href="' . esc_url( $full ) . '" target="_blank" rel="noopener noreferrer" aria-label="' . esc_attr__( 'Open full-size screenshot in a new tab', 'reference-code-library' ) . '"><img src="' . esc_url( $preview ) . '" alt=""></a></div>';
+            echo '<div class="rcl-example-row__fields">';
+            echo '<input type="hidden" name="rcl_examples[' . esc_attr( (string) $index ) . '][attachment_id]" value="' . esc_attr( (string) $example['attachment_id'] ) . '" data-rcl-example-field="attachment_id">';
+            echo '<input type="hidden" name="rcl_examples[' . esc_attr( (string) $index ) . '][order]" value="' . esc_attr( (string) $example['order'] ) . '" data-rcl-example-field="order">';
+            echo '<p class="rcl-example-row__heading"><strong>' . esc_html__( 'Example', 'reference-code-library' ) . ' <span data-rcl-example-number>' . esc_html( (string) ( $index + 1 ) ) . '</span></strong></p>';
+            echo '<label><span>' . esc_html__( 'Example type', 'reference-code-library' ) . '</span><select class="widefat" name="rcl_examples[' . esc_attr( (string) $index ) . '][type]" data-rcl-example-field="type">';
+            foreach ( $types as $value => $label ) {
+                echo '<option value="' . esc_attr( $value ) . '"' . selected( $example['type'], $value, false ) . '>' . esc_html( $label ) . '</option>';
+            }
+            echo '</select></label>';
+            echo '<label><span>' . esc_html__( 'Alternative text', 'reference-code-library' ) . '</span><input type="text" class="widefat" name="rcl_examples[' . esc_attr( (string) $index ) . '][alt]" value="' . esc_attr( $example['alt'] ) . '" data-rcl-example-field="alt"><span class="description">' . esc_html__( 'Describe the result demonstrated by the screenshot. Leave blank only when the screenshot is genuinely decorative.', 'reference-code-library' ) . '</span></label>';
+            echo '<label><span>' . esc_html__( 'Caption', 'reference-code-library' ) . '</span><textarea class="widefat" rows="3" name="rcl_examples[' . esc_attr( (string) $index ) . '][caption]" data-rcl-example-field="caption">' . esc_textarea( $example['caption'] ) . '</textarea></label>';
+            echo '</div>';
+            echo '<div class="rcl-example-row__actions"><button type="button" class="button button-secondary" data-rcl-example-up>' . esc_html__( 'Move up', 'reference-code-library' ) . '</button><button type="button" class="button button-secondary" data-rcl-example-down>' . esc_html__( 'Move down', 'reference-code-library' ) . '</button><button type="button" class="button-link-delete" data-rcl-example-remove>' . esc_html__( 'Remove', 'reference-code-library' ) . '</button></div>';
+            echo '</div>';
+        }
+
         echo '</div>';
     }
 
@@ -968,6 +1114,9 @@ final class RCL_Library {
             $code = str_replace( array( "\r\n", "\r" ), "\n", $code );
             update_post_meta( $post_id, '_moa_code', $code );
         }
+
+        $examples = isset( $_POST['rcl_examples'] ) ? wp_unslash( $_POST['rcl_examples'] ) : array();
+        update_post_meta( $post_id, self::META_EXAMPLES, self::sanitize_examples( $examples ) );
 
         $source_key = get_post_meta( $post_id, '_moa_source_key', true );
         if ( ! $source_key ) {
