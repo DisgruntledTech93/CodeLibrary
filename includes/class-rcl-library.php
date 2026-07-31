@@ -313,22 +313,36 @@ final class RCL_Library {
         wp_enqueue_script( 'reference-code-library' );
 
         $settings = self::get_settings();
+        $fonts    = self::get_resolved_font_stacks( $settings );
         $css      = sprintf(
-            '.rcl-library{--rcl-primary:%1$s;--rcl-secondary:%2$s;--rcl-accent:%3$s;--rcl-focus:%4$s;--rcl-background:%5$s;--rcl-card:%6$s;--rcl-text:%7$s;--rcl-muted:%8$s;--rcl-border:%9$s;--rcl-content-width:%10$spx;--rcl-radius:%11$spx;--rcl-code-size:%12$spx;}',
-            esc_attr( $settings['primary_color'] ),
-            esc_attr( $settings['secondary_color'] ),
-            esc_attr( $settings['accent_color'] ),
-            esc_attr( $settings['focus_color'] ),
-            esc_attr( $settings['background_color'] ),
-            esc_attr( $settings['card_color'] ),
-            esc_attr( $settings['text_color'] ),
-            esc_attr( $settings['muted_color'] ),
-            esc_attr( $settings['border_color'] ),
+            '.rcl-library{--rcl-primary:%1$s;--rcl-secondary:%2$s;--rcl-accent:%3$s;--rcl-focus:%4$s;--rcl-background:%5$s;--rcl-card:%6$s;--rcl-text:%7$s;--rcl-muted:%8$s;--rcl-border:%9$s;--rcl-content-width:%10$spx;--rcl-radius:%11$spx;--rcl-code-size:%12$spx;--rcl-font-body:%13$s;--rcl-font-heading:%14$s;--rcl-font-accent:%15$s;--rcl-font-code:%16$s;--rcl-base-size:%17$spx;--rcl-line-height:%18$s;--rcl-content-align:%19$s;--rcl-hero-align:%20$s;--rcl-card-align:%21$s;}',
+            $settings['primary_color'],
+            $settings['secondary_color'],
+            $settings['accent_color'],
+            $settings['focus_color'],
+            $settings['background_color'],
+            $settings['card_color'],
+            $settings['text_color'],
+            $settings['muted_color'],
+            $settings['border_color'],
             (int) $settings['content_width'],
             (int) $settings['border_radius'],
-            (int) $settings['code_font_size']
+            (int) $settings['code_font_size'],
+            $fonts['body'],
+            $fonts['heading'],
+            $fonts['accent'],
+            $fonts['code'],
+            (int) $settings['base_font_size'],
+            (float) $settings['line_height'],
+            $settings['content_alignment'],
+            $settings['hero_alignment'],
+            $settings['card_alignment']
         );
         wp_add_inline_style( 'reference-code-library', $css );
+
+        if ( '1' === (string) $settings['custom_css_enabled'] && '' !== trim( $settings['custom_css'] ) ) {
+            wp_add_inline_style( 'reference-code-library', $settings['custom_css'] );
+        }
     }
 
     public static function get_default_settings() {
@@ -351,7 +365,25 @@ final class RCL_Library {
             'content_width'                => 1216,
             'border_radius'                => 4,
             'code_font_size'               => 14,
+            'base_font_size'               => 16,
+            'line_height'                  => 1.6,
             'layout_preset'                => 'classic',
+            'typography_mode'              => 'plugin',
+            'body_font_preset'             => 'tahoma',
+            'heading_font_preset'          => 'arial_narrow',
+            'accent_font_preset'           => 'georgia',
+            'code_font_preset'             => 'consolas',
+            'body_font_custom'             => '',
+            'heading_font_custom'          => '',
+            'accent_font_custom'           => '',
+            'code_font_custom'             => '',
+            'content_alignment'            => 'start',
+            'hero_alignment'               => 'start',
+            'card_alignment'               => 'start',
+            'style_isolation'               => 'standard',
+            'custom_css'                   => '',
+            'custom_css_backup'            => '',
+            'custom_css_enabled'           => '0',
             'show_hero'                    => '1',
             'show_stats'                   => '1',
             'show_start_here'              => '1',
@@ -364,12 +396,127 @@ final class RCL_Library {
         return wp_parse_args( is_array( $saved ) ? $saved : array(), self::get_default_settings() );
     }
 
+    public static function get_font_options( $group = 'body' ) {
+        $common = array(
+            'system'       => __( 'System UI', 'reference-code-library' ),
+            'arial'        => __( 'Arial / Helvetica', 'reference-code-library' ),
+            'tahoma'       => __( 'Tahoma / Verdana', 'reference-code-library' ),
+            'trebuchet'    => __( 'Trebuchet MS', 'reference-code-library' ),
+            'georgia'      => __( 'Georgia', 'reference-code-library' ),
+            'times'        => __( 'Times New Roman', 'reference-code-library' ),
+            'arial_narrow' => __( 'Arial Narrow / Arial', 'reference-code-library' ),
+            'custom'       => __( 'Custom font stack', 'reference-code-library' ),
+        );
+
+        if ( 'code' === $group ) {
+            return array(
+                'consolas'   => __( 'Consolas / Liberation Mono', 'reference-code-library' ),
+                'monospace'  => __( 'System monospace', 'reference-code-library' ),
+                'courier'    => __( 'Courier New', 'reference-code-library' ),
+                'menlo'      => __( 'Menlo / Monaco', 'reference-code-library' ),
+                'custom'     => __( 'Custom monospace stack', 'reference-code-library' ),
+            );
+        }
+
+        return $common;
+    }
+
+    private static function get_font_stack_map() {
+        return array(
+            'system'       => 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+            'arial'        => 'Arial,Helvetica,sans-serif',
+            'tahoma'       => 'Tahoma,Verdana,Arial,sans-serif',
+            'trebuchet'    => '"Trebuchet MS",Tahoma,Arial,sans-serif',
+            'georgia'      => 'Georgia,"Times New Roman",serif',
+            'times'        => '"Times New Roman",Times,serif',
+            'arial_narrow' => '"Arial Narrow",Arial,sans-serif',
+            'consolas'     => 'Consolas,"Liberation Mono",Menlo,monospace',
+            'monospace'    => 'ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace',
+            'courier'      => '"Courier New",Courier,monospace',
+            'menlo'        => 'Menlo,Monaco,Consolas,"Liberation Mono",monospace',
+        );
+    }
+
+    public static function sanitize_font_stack( $value ) {
+        $value = sanitize_text_field( (string) $value );
+        $value = trim( $value );
+        if ( '' === $value ) {
+            return '';
+        }
+
+        if ( strlen( $value ) > 300 || ! preg_match( '/^[a-zA-Z0-9_.\-\s,"\']+$/', $value ) ) {
+            return '';
+        }
+
+        return $value;
+    }
+
+    public static function sanitize_custom_css( $value ) {
+        $value = (string) $value;
+        $value = str_replace( "\0", '', $value );
+        $value = preg_replace( '#<\s*/?\s*style\b[^>]*>#i', '', $value );
+        $value = preg_replace( '#<\s*/?\s*style\b#i', '', $value );
+        $value = trim( $value );
+
+        if ( strlen( $value ) > 50000 ) {
+            $value = substr( $value, 0, 50000 );
+        }
+
+        return $value;
+    }
+
+    public static function get_resolved_font_stacks( $settings = null ) {
+        $defaults = self::get_default_settings();
+        $settings = is_array( $settings ) ? wp_parse_args( $settings, $defaults ) : self::get_settings();
+        $map      = self::get_font_stack_map();
+
+        if ( 'inherit' === $settings['typography_mode'] ) {
+            return array(
+                'body'    => 'inherit',
+                'heading' => 'inherit',
+                'accent'  => 'inherit',
+                'code'    => $map['consolas'],
+            );
+        }
+
+        if ( 'plugin' === $settings['typography_mode'] ) {
+            return array(
+                'body'    => $map[ $defaults['body_font_preset'] ],
+                'heading' => $map[ $defaults['heading_font_preset'] ],
+                'accent'  => $map[ $defaults['accent_font_preset'] ],
+                'code'    => $map[ $defaults['code_font_preset'] ],
+            );
+        }
+
+        $resolved = array();
+        foreach ( array( 'body', 'heading', 'accent', 'code' ) as $group ) {
+            $preset_key = $group . '_font_preset';
+            $custom_key = $group . '_font_custom';
+            $preset     = $settings[ $preset_key ] ?? $defaults[ $preset_key ];
+
+            if ( 'custom' === $preset ) {
+                $custom = self::sanitize_font_stack( $settings[ $custom_key ] ?? '' );
+                if ( $custom ) {
+                    $resolved[ $group ] = $custom;
+                    continue;
+                }
+                $preset = $defaults[ $preset_key ];
+            }
+
+            $resolved[ $group ] = $map[ $preset ] ?? $map[ $defaults[ $preset_key ] ];
+        }
+
+        return $resolved;
+    }
+
     public static function sanitize_settings( $input ) {
         $defaults = self::get_default_settings();
         $input    = is_array( $input ) ? $input : array();
+        $current  = get_option( self::OPTION_KEY, array() );
+        $current  = is_array( $current ) ? wp_parse_args( $current, $defaults ) : $defaults;
         $output   = array();
 
-        $output['title']           = sanitize_text_field( $input['title'] ?? $defaults['title'] );
+        $output['title'] = sanitize_text_field( $input['title'] ?? $defaults['title'] );
         if ( ! $output['title'] ) {
             $output['title'] = $defaults['title'];
         }
@@ -386,10 +533,46 @@ final class RCL_Library {
         $output['content_width']  = min( 1920, max( 640, absint( $input['content_width'] ?? $defaults['content_width'] ) ) );
         $output['border_radius']  = min( 32, absint( $input['border_radius'] ?? $defaults['border_radius'] ) );
         $output['code_font_size'] = min( 24, max( 11, absint( $input['code_font_size'] ?? $defaults['code_font_size'] ) ) );
+        $output['base_font_size'] = min( 24, max( 12, absint( $input['base_font_size'] ?? $defaults['base_font_size'] ) ) );
+        $line_height              = (float) ( $input['line_height'] ?? $defaults['line_height'] );
+        $output['line_height']    = min( 2.5, max( 1.2, round( $line_height, 2 ) ) );
 
-        $allowed_layouts         = array( 'classic', 'minimal', 'documentation' );
-        $layout                  = sanitize_key( $input['layout_preset'] ?? $defaults['layout_preset'] );
-        $output['layout_preset'] = in_array( $layout, $allowed_layouts, true ) ? $layout : $defaults['layout_preset'];
+        $allowed_layouts          = array( 'classic', 'minimal', 'documentation' );
+        $layout                   = sanitize_key( $input['layout_preset'] ?? $defaults['layout_preset'] );
+        $output['layout_preset']  = in_array( $layout, $allowed_layouts, true ) ? $layout : $defaults['layout_preset'];
+
+        $allowed_typography       = array( 'plugin', 'inherit', 'custom' );
+        $typography               = sanitize_key( $input['typography_mode'] ?? $defaults['typography_mode'] );
+        $output['typography_mode'] = in_array( $typography, $allowed_typography, true ) ? $typography : $defaults['typography_mode'];
+
+        foreach ( array( 'body', 'heading', 'accent', 'code' ) as $group ) {
+            $preset_key = $group . '_font_preset';
+            $custom_key = $group . '_font_custom';
+            $options    = self::get_font_options( $group );
+            $preset     = sanitize_key( $input[ $preset_key ] ?? $defaults[ $preset_key ] );
+            $output[ $preset_key ] = isset( $options[ $preset ] ) ? $preset : $defaults[ $preset_key ];
+            $output[ $custom_key ] = self::sanitize_font_stack( $input[ $custom_key ] ?? '' );
+        }
+
+        $allowed_alignments = array( 'start', 'center' );
+        foreach ( array( 'content_alignment', 'hero_alignment', 'card_alignment' ) as $key ) {
+            $alignment     = sanitize_key( $input[ $key ] ?? $defaults[ $key ] );
+            $output[ $key ] = in_array( $alignment, $allowed_alignments, true ) ? $alignment : $defaults[ $key ];
+        }
+
+        $allowed_isolation          = array( 'standard', 'relaxed' );
+        $isolation                  = sanitize_key( $input['style_isolation'] ?? $defaults['style_isolation'] );
+        $output['style_isolation']  = in_array( $isolation, $allowed_isolation, true ) ? $isolation : $defaults['style_isolation'];
+
+        $new_css = self::sanitize_custom_css( $input['custom_css'] ?? '' );
+        $old_css = self::sanitize_custom_css( $current['custom_css'] ?? '' );
+        $backup  = self::sanitize_custom_css( $current['custom_css_backup'] ?? '' );
+        if ( $new_css !== $old_css ) {
+            $backup = $old_css;
+        }
+        $output['custom_css']         = $new_css;
+        $output['custom_css_backup']  = $backup;
+        $output['custom_css_enabled'] = ! empty( $input['custom_css_enabled'] ) ? '1' : '0';
 
         foreach ( array( 'show_hero', 'show_stats', 'show_start_here', 'show_collection_descriptions' ) as $key ) {
             $output[ $key ] = ! empty( $input[ $key ] ) ? '1' : '0';
@@ -521,7 +704,7 @@ final class RCL_Library {
         $settings = self::get_settings();
 
         ob_start();
-        echo '<div class="rcl-library rcl-layout-' . esc_attr( $settings['layout_preset'] ) . '" data-rcl-library>';
+        echo '<div class="rcl-library rcl-layout-' . esc_attr( $settings['layout_preset'] ) . ' rcl-typography-' . esc_attr( $settings['typography_mode'] ) . ' rcl-isolation-' . esc_attr( $settings['style_isolation'] ) . '" data-rcl-library>';
         echo '<div class="rcl-library__live" aria-live="polite" aria-atomic="true"></div>';
 
         if ( $entry ) {

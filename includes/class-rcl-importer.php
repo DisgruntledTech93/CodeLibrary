@@ -562,6 +562,26 @@ final class RCL_Importer {
             'muted_color'                  => 'color',
             'border_color'                 => 'color',
             'layout_preset'                => 'key',
+            'style_isolation'               => 'key',
+            'typography_mode'              => 'key',
+            'body_font_preset'             => 'key',
+            'heading_font_preset'          => 'key',
+            'accent_font_preset'           => 'key',
+            'code_font_preset'             => 'key',
+            'body_font_custom'             => 'font',
+            'heading_font_custom'          => 'font',
+            'accent_font_custom'           => 'font',
+            'code_font_custom'             => 'font',
+            'base_font_size'               => 'int',
+            'line_height'                  => 'float',
+            'content_alignment'            => 'key',
+            'hero_alignment'               => 'key',
+            'card_alignment'               => 'key',
+            'content_width'                => 'int',
+            'border_radius'                => 'int',
+            'code_font_size'               => 'int',
+            'custom_css'                   => 'css',
+            'custom_css_enabled'           => 'bool',
             'show_hero'                    => 'bool',
             'show_stats'                   => 'bool',
             'show_start_here'              => 'bool',
@@ -583,6 +603,14 @@ final class RCL_Importer {
                 $value = sanitize_key( $value );
             } elseif ( 'bool' === $type ) {
                 $value = ! empty( $value ) ? '1' : '0';
+            } elseif ( 'int' === $type ) {
+                $value = absint( $value );
+            } elseif ( 'float' === $type ) {
+                $value = (float) $value;
+            } elseif ( 'font' === $type ) {
+                $value = RCL_Library::sanitize_font_stack( $value );
+            } elseif ( 'css' === $type ) {
+                $value = RCL_Library::sanitize_custom_css( $value );
             } else {
                 $value = sanitize_text_field( $value );
             }

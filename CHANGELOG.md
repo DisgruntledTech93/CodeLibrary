@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.2.0
+
+- Added explicit start/left or centered alignment controls for general content, hero content, and cards.
+- Added standard and relaxed theme-style isolation modes for improved consistency across Colibri and other themes.
+- Added plugin, inherited-theme, and custom typography modes.
+- Added body, heading, accent/button, and code font-stack selectors with optional custom local stacks.
+- Added base font-size and unitless line-height controls.
+- Added an Advanced CSS editor using the native WordPress code editor with CSS linting and syntax highlighting when enabled for the user.
+- Added a frontend enable/disable switch and one-version recovery for Advanced CSS.
+- Added typography, alignment, sizing, and optional Advanced CSS to branding imports and exports.
+- Preserved all 2.1.0 screenshot-gallery, portable-pack, legacy-content, block, and shortcode behavior.
+
 ## 2.1.0
 
 - Added a Working Examples screenshot gallery to every code entry.

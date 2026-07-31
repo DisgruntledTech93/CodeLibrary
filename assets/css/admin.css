@@ -269,3 +269,51 @@
     grid-column: auto;
   }
 }
+
+/* Appearance controls added in 2.2.0 */
+.rcl-appearance-table .rcl-settings-section th {
+  padding: 28px 0 8px;
+  border-bottom: 1px solid #dcdcde;
+}
+
+.rcl-appearance-table .rcl-settings-section h2 {
+  margin: 0 0 4px;
+  font-size: 1.25rem;
+}
+
+.rcl-appearance-table .rcl-settings-section p {
+  max-width: 760px;
+  margin: 0 0 8px;
+  color: #50575e;
+  font-weight: 400;
+}
+
+.rcl-appearance-table [data-rcl-custom-font] {
+  margin-left: 8px;
+}
+
+.rcl-appearance-table .CodeMirror {
+  max-width: 1000px;
+  min-height: 420px;
+  border: 1px solid #8c8f94;
+}
+
+.rcl-appearance-table #rcl-custom-css {
+  width: 100%;
+  max-width: 1000px;
+  margin-top: 10px;
+  font-family: Consolas, Monaco, monospace;
+}
+
+.rcl-export-suboption {
+  display: inline-block;
+  margin: 8px 0 0 24px;
+}
+
+@media (max-width: 782px) {
+  .rcl-appearance-table [data-rcl-custom-font] {
+    display: block;
+    width: 100%;
+    margin: 8px 0 0;
+  }
+}

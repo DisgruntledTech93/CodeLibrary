@@ -21,6 +21,7 @@ final class RCL_Admin {
         add_action( 'admin_post_rcl_export_library', array( $this, 'handle_export' ) );
         add_action( 'admin_post_rcl_download_template', array( $this, 'handle_template_download' ) );
         add_action( 'admin_post_rcl_download_example', array( $this, 'handle_example_download' ) );
+        add_action( 'admin_post_rcl_restore_custom_css', array( $this, 'handle_restore_custom_css' ) );
     }
 
     public function admin_menu() {
@@ -134,6 +135,27 @@ final class RCL_Admin {
                     'useLogo'    => __( 'Use this logo', 'reference-code-library' ),
                 )
             );
+
+            $editor_settings = wp_enqueue_code_editor(
+                array(
+                    'type'       => 'text/css',
+                    'codemirror' => array(
+                        'indentUnit' => 2,
+                        'tabSize'    => 2,
+                        'lineNumbers'=> true,
+                    ),
+                )
+            );
+
+            if ( false !== $editor_settings ) {
+                wp_add_inline_script(
+                    'code-editor',
+                    sprintf(
+                        'jQuery(function(){if(window.wp&&wp.codeEditor&&document.getElementById("rcl-custom-css")){wp.codeEditor.initialize("rcl-custom-css",%s);}});',
+                        wp_json_encode( $editor_settings )
+                    )
+                );
+            }
         }
     }
 
@@ -339,7 +361,7 @@ final class RCL_Admin {
         }
         echo '</details>';
 
-        echo '<p><label><input type="checkbox" name="rcl_export_branding" value="1"> Include the current library title, colors, and display settings</label></p>';
+        echo '<p><label><input type="checkbox" name="rcl_export_branding" value="1"> Include the current library title, colors, typography, alignment, and display settings</label><br><label class="rcl-export-suboption"><input type="checkbox" name="rcl_export_custom_css" value="1"> Include Advanced CSS when branding is included</label></p>';
         echo '<p><label><input type="checkbox" name="rcl_export_examples" value="1" checked> Include working-example screenshots</label><br><span class="description">When selected entries contain screenshots, the download is a ZIP containing <code>library.json</code> and an <code>images/</code> folder. Without screenshots, the export remains JSON.</span></p>';
         submit_button( 'Download library pack', 'primary', 'submit', false, $entries ? array() : array( 'disabled' => 'disabled' ) );
         echo '</form></section>';
@@ -353,7 +375,8 @@ final class RCL_Admin {
 
         $scope            = sanitize_key( wp_unslash( $_POST['rcl_export_scope'] ?? 'all' ) );
         $include_branding = ! empty( $_POST['rcl_export_branding'] );
-        $include_examples = ! empty( $_POST['rcl_export_examples'] );
+        $include_examples   = ! empty( $_POST['rcl_export_examples'] );
+        $include_custom_css = $include_branding && ! empty( $_POST['rcl_export_custom_css'] );
         $post_ids         = array();
         $collection       = '';
 
@@ -370,7 +393,7 @@ final class RCL_Admin {
             }
         }
 
-        $pack     = RCL_Exporter::build_pack( $post_ids, $collection, $include_branding, $include_examples );
+        $pack     = RCL_Exporter::build_pack( $post_ids, $collection, $include_branding, $include_examples, $include_custom_css );
         $filename = sanitize_title( $pack['pack']['name'] ) . '-library-pack';
         RCL_Exporter::send_library_pack( $pack, $filename );
     }
@@ -399,11 +422,17 @@ final class RCL_Admin {
         $settings = RCL_Library::get_settings();
         $logo_url = $settings['logo_id'] ? wp_get_attachment_image_url( (int) $settings['logo_id'], 'medium' ) : $settings['legacy_logo_url'];
 
-        echo '<div class="wrap rcl-admin-wrap"><h1>Code Library Appearance</h1><p class="rcl-admin-lead">Brand the library without editing plugin files. Imported packs can optionally supply these values, but logos always remain under local Media Library control.</p>';
+        echo '<div class="wrap rcl-admin-wrap"><h1>Code Library Appearance</h1><p class="rcl-admin-lead">Brand the library, control typography and alignment, and add carefully scoped CSS without editing plugin files.</p>';
+
+        if ( isset( $_GET['rcl_css_restored'] ) ) {
+            echo '<div class="notice notice-success inline"><p>The previous Advanced CSS was restored.</p></div>';
+        }
+
         echo '<form method="post" action="options.php">';
         settings_fields( 'rcl_library_settings_group' );
-        echo '<table class="form-table" role="presentation"><tbody>';
+        echo '<table class="form-table rcl-appearance-table" role="presentation"><tbody>';
 
+        $this->section_row( 'Identity', 'Set the library name, introductory copy, and optional logo.' );
         $this->text_row( 'Library title', 'title', $settings['title'] );
         $this->text_row( 'Eyebrow or organization text', 'eyebrow', $settings['eyebrow'] );
         echo '<tr><th scope="row"><label for="rcl-intro">Introduction</label></th><td><textarea class="large-text" rows="4" id="rcl-intro" name="' . esc_attr( RCL_Library::OPTION_KEY ) . '[intro]">' . esc_textarea( $settings['intro'] ) . '</textarea></td></tr>';
@@ -421,11 +450,38 @@ final class RCL_Admin {
         echo '<p class="description">The plugin uses the WordPress Media Library. A logo is optional.</p></td></tr>';
         $this->text_row( 'Logo alternative text', 'logo_alt', $settings['logo_alt'], 'text', 'Describe the organization represented by the logo. Leave blank only when the logo is decorative.' );
 
-        echo '<tr><th scope="row"><label for="rcl-layout-preset">Layout preset</label></th><td><select id="rcl-layout-preset" name="' . esc_attr( RCL_Library::OPTION_KEY ) . '[layout_preset]">';
-        foreach ( array( 'classic' => 'Classic', 'minimal' => 'Minimal', 'documentation' => 'Documentation' ) as $value => $label ) {
-            echo '<option value="' . esc_attr( $value ) . '" ' . selected( $settings['layout_preset'], $value, false ) . '>' . esc_html( $label ) . '</option>';
-        }
-        echo '</select></td></tr>';
+        $this->section_row( 'Layout and theme compatibility', 'Choose the overall presentation and stop parent theme alignment rules from drifting into the library.' );
+        $this->select_row(
+            'Layout preset',
+            'layout_preset',
+            $settings['layout_preset'],
+            array( 'classic' => 'Classic', 'minimal' => 'Minimal', 'documentation' => 'Documentation' )
+        );
+        $this->select_row(
+            'Theme style isolation',
+            'style_isolation',
+            $settings['style_isolation'],
+            array( 'standard' => 'Standard isolation', 'relaxed' => 'Allow more theme styling' ),
+            'Standard isolation is recommended when Colibri or another theme changes headings, controls, or text unexpectedly.'
+        );
+        $this->select_row(
+            'General content alignment',
+            'content_alignment',
+            $settings['content_alignment'],
+            array( 'start' => 'Start / left in left-to-right languages', 'center' => 'Center' )
+        );
+        $this->select_row(
+            'Hero content alignment',
+            'hero_alignment',
+            $settings['hero_alignment'],
+            array( 'start' => 'Start / left in left-to-right languages', 'center' => 'Center' )
+        );
+        $this->select_row(
+            'Card content alignment',
+            'card_alignment',
+            $settings['card_alignment'],
+            array( 'start' => 'Start / left in left-to-right languages', 'center' => 'Center' )
+        );
 
         echo '<tr><th scope="row">Visible sections</th><td>';
         $this->checkbox( 'show_hero', 'Show the hero section', $settings );
@@ -434,6 +490,24 @@ final class RCL_Admin {
         $this->checkbox( 'show_collection_descriptions', 'Show collection descriptions', $settings );
         echo '</td></tr>';
 
+        $this->section_row( 'Typography', 'Use the plugin defaults, inherit the active theme, or select custom local font stacks. The plugin does not download external fonts.' );
+        $this->select_row(
+            'Typography source',
+            'typography_mode',
+            $settings['typography_mode'],
+            array( 'plugin' => 'Use Code Library typography', 'inherit' => 'Inherit typography from the active theme', 'custom' => 'Custom typography' ),
+            '',
+            'data-rcl-typography-mode'
+        );
+
+        foreach ( array( 'body' => 'Body font', 'heading' => 'Heading font', 'accent' => 'Accent and button font', 'code' => 'Code font' ) as $group => $label ) {
+            $this->font_row( $label, $group, $settings );
+        }
+        $this->number_row( 'Base font size', 'base_font_size', $settings['base_font_size'], 12, 24, 'pixels' );
+        $this->decimal_row( 'Line height', 'line_height', $settings['line_height'], 1.2, 2.5, 0.1, 'Use a unitless value so text can resize and reflow safely.' );
+        $this->number_row( 'Code font size', 'code_font_size', $settings['code_font_size'], 11, 24, 'pixels' );
+
+        $this->section_row( 'Colors', 'Choose colors for the library surfaces and controls. Verify contrast after saving.' );
         $this->color_row( 'Primary color', 'primary_color', $settings['primary_color'] );
         $this->color_row( 'Secondary color', 'secondary_color', $settings['secondary_color'] );
         $this->color_row( 'Accent color', 'accent_color', $settings['accent_color'] );
@@ -444,13 +518,57 @@ final class RCL_Admin {
         $this->color_row( 'Muted text color', 'muted_color', $settings['muted_color'] );
         $this->color_row( 'Border color', 'border_color', $settings['border_color'] );
 
+        $this->section_row( 'Sizing', 'Adjust the library container and component shape.' );
         $this->number_row( 'Content width', 'content_width', $settings['content_width'], 640, 1920, 'pixels' );
         $this->number_row( 'Border radius', 'border_radius', $settings['border_radius'], 0, 32, 'pixels' );
-        $this->number_row( 'Code font size', 'code_font_size', $settings['code_font_size'], 11, 24, 'pixels' );
+
+        $this->section_row( 'Advanced CSS', 'Styles entered here load after the main Code Library stylesheet. Scope selectors to .rcl-library so they do not leak into the rest of the site.' );
+        echo '<tr><th scope="row"><label for="rcl-custom-css">Custom CSS</label></th><td>';
+        echo '<label class="rcl-settings-checkbox"><input type="checkbox" name="' . esc_attr( RCL_Library::OPTION_KEY ) . '[custom_css_enabled]" value="1" ' . checked( '1', (string) $settings['custom_css_enabled'], false ) . '> Enable Advanced CSS on the frontend</label>';
+        echo '<textarea class="large-text code" rows="18" id="rcl-custom-css" name="' . esc_attr( RCL_Library::OPTION_KEY ) . '[custom_css]" spellcheck="false">' . esc_textarea( $settings['custom_css'] ) . '</textarea>';
+        echo '<p class="description">Do not include &lt;style&gt; tags. Maximum 50,000 characters. Example: <code>.rcl-library .rcl-hero__content { text-align: center; }</code></p>';
+        echo '</td></tr>';
 
         echo '</tbody></table>';
         submit_button( 'Save Appearance' );
-        echo '</form></div>';
+        echo '</form>';
+
+        if ( '' !== trim( $settings['custom_css_backup'] ) ) {
+            echo '<hr><h2>Advanced CSS recovery</h2><p>A previous saved CSS version is available. Restoring it swaps the current and previous versions.</p>';
+            echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
+            echo '<input type="hidden" name="action" value="rcl_restore_custom_css">';
+            wp_nonce_field( 'rcl_restore_custom_css', 'rcl_restore_custom_css_nonce' );
+            submit_button( 'Restore previous CSS', 'secondary', 'submit', false );
+            echo '</form>';
+        }
+
+        echo '</div>';
+    }
+
+    public function handle_restore_custom_css() {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'You do not have permission to restore library CSS.', 'reference-code-library' ) );
+        }
+        check_admin_referer( 'rcl_restore_custom_css', 'rcl_restore_custom_css_nonce' );
+
+        $settings = RCL_Library::get_settings();
+        $backup   = (string) $settings['custom_css_backup'];
+        if ( '' !== trim( $backup ) ) {
+            $settings['custom_css']         = $backup;
+            $settings['custom_css_enabled'] = '1';
+            update_option( RCL_Library::OPTION_KEY, RCL_Library::sanitize_settings( $settings ) );
+        }
+
+        wp_safe_redirect( admin_url( 'edit.php?post_type=' . RCL_Library::POST_TYPE . '&page=rcl-appearance&rcl_css_restored=1' ) );
+        exit;
+    }
+
+    private function section_row( $heading, $description = '' ) {
+        echo '<tr class="rcl-settings-section"><th colspan="2"><h2>' . esc_html( $heading ) . '</h2>';
+        if ( $description ) {
+            echo '<p>' . esc_html( $description ) . '</p>';
+        }
+        echo '</th></tr>';
     }
 
     private function text_row( $label, $name, $value, $type = 'text', $description = '' ) {
@@ -460,6 +578,35 @@ final class RCL_Admin {
             echo '<p class="description">' . esc_html( $description ) . '</p>';
         }
         echo '</td></tr>';
+    }
+
+    private function select_row( $label, $name, $value, $options, $description = '', $attributes = '' ) {
+        $id = 'rcl-' . sanitize_html_class( $name );
+        echo '<tr><th scope="row"><label for="' . esc_attr( $id ) . '">' . esc_html( $label ) . '</label></th><td><select id="' . esc_attr( $id ) . '" name="' . esc_attr( RCL_Library::OPTION_KEY ) . '[' . esc_attr( $name ) . ']" ' . $attributes . '>';
+        foreach ( $options as $option_value => $option_label ) {
+            echo '<option value="' . esc_attr( $option_value ) . '" ' . selected( $value, $option_value, false ) . '>' . esc_html( $option_label ) . '</option>';
+        }
+        echo '</select>';
+        if ( $description ) {
+            echo '<p class="description">' . esc_html( $description ) . '</p>';
+        }
+        echo '</td></tr>';
+    }
+
+    private function font_row( $label, $group, $settings ) {
+        $preset_name = $group . '_font_preset';
+        $custom_name = $group . '_font_custom';
+        $preset_id   = 'rcl-' . sanitize_html_class( $preset_name );
+        $custom_id   = 'rcl-' . sanitize_html_class( $custom_name );
+
+        echo '<tr data-rcl-font-row><th scope="row"><label for="' . esc_attr( $preset_id ) . '">' . esc_html( $label ) . '</label></th><td>';
+        echo '<select id="' . esc_attr( $preset_id ) . '" name="' . esc_attr( RCL_Library::OPTION_KEY ) . '[' . esc_attr( $preset_name ) . ']" data-rcl-font-preset="' . esc_attr( $group ) . '">';
+        foreach ( RCL_Library::get_font_options( $group ) as $value => $option_label ) {
+            echo '<option value="' . esc_attr( $value ) . '" ' . selected( $settings[ $preset_name ], $value, false ) . '>' . esc_html( $option_label ) . '</option>';
+        }
+        echo '</select> ';
+        echo '<input class="regular-text" type="text" id="' . esc_attr( $custom_id ) . '" name="' . esc_attr( RCL_Library::OPTION_KEY ) . '[' . esc_attr( $custom_name ) . ']" value="' . esc_attr( $settings[ $custom_name ] ) . '" data-rcl-custom-font="' . esc_attr( $group ) . '" placeholder="Open Sans, Arial, sans-serif">';
+        echo '<p class="description">Custom stacks use fonts already loaded by the site or available on the visitor’s device.</p></td></tr>';
     }
 
     private function color_row( $label, $name, $value, $description = '' ) {
@@ -476,6 +623,15 @@ final class RCL_Admin {
         echo '<tr><th scope="row"><label for="' . esc_attr( $id ) . '">' . esc_html( $label ) . '</label></th><td><input type="number" id="' . esc_attr( $id ) . '" name="' . esc_attr( RCL_Library::OPTION_KEY ) . '[' . esc_attr( $name ) . ']" value="' . esc_attr( (string) $value ) . '" min="' . esc_attr( (string) $min ) . '" max="' . esc_attr( (string) $max ) . '"> ' . esc_html( $suffix ) . '</td></tr>';
     }
 
+    private function decimal_row( $label, $name, $value, $min, $max, $step, $description = '' ) {
+        $id = 'rcl-' . sanitize_html_class( $name );
+        echo '<tr><th scope="row"><label for="' . esc_attr( $id ) . '">' . esc_html( $label ) . '</label></th><td><input type="number" id="' . esc_attr( $id ) . '" name="' . esc_attr( RCL_Library::OPTION_KEY ) . '[' . esc_attr( $name ) . ']" value="' . esc_attr( (string) $value ) . '" min="' . esc_attr( (string) $min ) . '" max="' . esc_attr( (string) $max ) . '" step="' . esc_attr( (string) $step ) . '">';
+        if ( $description ) {
+            echo '<p class="description">' . esc_html( $description ) . '</p>';
+        }
+        echo '</td></tr>';
+    }
+
     private function checkbox( $name, $label, $settings ) {
         echo '<label class="rcl-settings-checkbox"><input type="checkbox" name="' . esc_attr( RCL_Library::OPTION_KEY ) . '[' . esc_attr( $name ) . ']" value="1" ' . checked( '1', (string) $settings[ $name ], false ) . '> ' . esc_html( $label ) . '</label>';
     }
@@ -489,7 +645,8 @@ final class RCL_Admin {
         echo '<section class="rcl-admin-card"><h2>Place the library</h2><p>Use the Gutenberg block named <strong>Code Library</strong>, or add one of these shortcodes to a page:</p><p><code>[code_library]</code></p><p><code>[code_collection slug="css"]</code></p><p><code>[code_entry slug="visible-focus-example"]</code></p><p>Legacy v1 shortcodes continue to render.</p></section>';
         echo '<section class="rcl-admin-card"><h2>Build entries</h2><p>Use <strong>Code Library → Add Code</strong> for manual entry. Add the title, context fields, language, inert code text, collection, status, optional tags, and working-example screenshots.</p><p>Each screenshot can be labeled as a before, after, result, configuration, inspector, mobile, test, or other view. Add useful alternative text and a visible caption. The stable import ID is generated automatically from the title and remains hidden from editors.</p></section>';
         echo '<section class="rcl-admin-card"><h2>Import safely</h2><p>Imports accept JSON-formatted <code>.json</code> or <code>.txt</code> files up to 5 MB, plus portable <code>.zip</code> packs up to 25 MB. ZIP packs may include <code>library.json</code> and validated images inside <code>images/</code>. Every pack is previewed before records or Media Library attachments are created.</p></section>';
-        echo '<section class="rcl-admin-card"><h2>Execution boundary</h2><p>This plugin is a documentation and reference system. It does not evaluate PHP, inject JavaScript, apply CSS, or execute imported code.</p></section>';
+        echo '<section class="rcl-admin-card"><h2>Appearance and compatibility</h2><p>Use <strong>Code Library → Appearance</strong> to choose typography, alignment, stronger theme isolation, and optional Advanced CSS. Custom CSS is presentation-only and loads after the plugin stylesheet.</p></section>';
+        echo '<section class="rcl-admin-card"><h2>Execution boundary</h2><p>This plugin is a documentation and reference system. It does not evaluate stored PHP, inject stored JavaScript, or execute imported code. The separate Advanced CSS setting applies only administrator-authored presentation CSS.</p></section>';
         echo '</div></div>';
     }
 }

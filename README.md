@@ -2,9 +2,9 @@
 
 Reference Code Library is a generic WordPress plugin for publishing a searchable, theme-independent library of documented code examples.
 
-The plugin stores code as inert text. It does not evaluate PHP, inject JavaScript, apply CSS, or execute imported snippets.
+The plugin stores code entries as inert text. It does not evaluate PHP, inject JavaScript, apply CSS stored in entries, or execute imported snippets. Version 2.2 adds a separate administrator-controlled Advanced CSS setting for the library presentation itself.
 
-## Version 2.1.0
+## Version 2.2.0
 
 Version 2 separates the library engine from the content it contains:
 
@@ -22,10 +22,17 @@ Version 2 separates the library engine from the content it contains:
 - Uses the native Media Library for screenshot selection and responsive image output
 - Imports and exports portable ZIP packs containing `library.json` plus screenshot files
 - Retains JSON/TXT compatibility for content-only library packs
+- Adds explicit content, hero, and card alignment controls
+- Adds standard or relaxed theme-style isolation for Colibri and other theme builders
+- Adds plugin, inherited-theme, and custom typography modes
+- Adds local font-stack selectors for body, headings, accent/buttons, and code
+- Adds base font-size and unitless line-height controls
+- Adds a native WordPress Advanced CSS editor with an enable switch and one-version recovery
+- Includes typography, alignment, sizing, and optional Advanced CSS in portable branding data
 
 ## Installation
 
-1. When Missouri Accessibility Library v1 is installed, deactivate it first. Do not uninstall its content.
+1. When Library v1 is installed, deactivate it first. Do not uninstall its content.
 2. Upload the `reference-code-library` folder to `/wp-content/plugins/`, or install the ZIP through WordPress.
 3. Activate **Reference Code Library**.
 4. Open **Code Library → Add Code** to create entries manually, attach working-example screenshots, or **Code Library → Import / Export** to import a JSON, TXT, or portable ZIP pack.
@@ -37,14 +44,6 @@ Version 2 separates the library engine from the content it contains:
 [code_library]
 [code_collection slug="css-patterns"]
 [code_entry slug="visible-focus-example"]
-```
-
-Legacy v1 shortcodes remain supported:
-
-```text
-[mo_accessibility_library]
-[mo_accessibility_collection slug="css-patterns"]
-[mo_accessibility_pattern slug="visible-focus-example"]
 ```
 
 ## Library-pack schema
@@ -63,9 +62,27 @@ A JSON/TXT pack uses this root structure. A portable ZIP pack places the same ma
 
 Use **Code Library → Import / Export** to download a blank template and a populated example.
 
+## Typography and theme compatibility
+
+Open **Code Library → Appearance** to choose how the library interacts with the active theme:
+
+- **Use Code Library typography** keeps the packaged font stacks.
+- **Inherit typography from the active theme** deliberately follows the surrounding site.
+- **Custom typography** lets an administrator select local font stacks or enter a stack already loaded by the theme.
+- **Standard isolation** explicitly controls library headings, controls, alignment, and text behavior.
+- **Allow more theme styling** relaxes those protections.
+
+General content, hero content, and cards have separate start/center alignment controls. The default is `start`, which prevents a centered shortcode container from silently centering the entire library.
+
+## Advanced CSS
+
+The Appearance screen includes a CSS editor powered by the WordPress code-editor assets when syntax highlighting is enabled for the current user. CSS loads after the packaged frontend stylesheet only when **Enable Advanced CSS on the frontend** is checked.
+
+Scope rules to `.rcl-library`, omit `<style>` tags, and keep site-specific CSS out of portable exports unless the export option is deliberately selected. The plugin keeps the immediately previous saved CSS version so an administrator can restore it.
+
 ## Upgrade compatibility
 
-The plugin intentionally retains the original internal post type, taxonomy, and metadata identifiers from Missouri Accessibility Library v1. Existing entries remain visible when v2 replaces v1. User-facing labels and new package formats are generic.
+The plugin intentionally retains the original internal post type, taxonomy, and metadata identifiers from Library v1. Existing entries remain visible when v2 replaces v1. User-facing labels and new package formats are generic.
 
 ## Development notes
 

@@ -4,7 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class RCL_Exporter {
-    public static function build_pack( $post_ids = array(), $collection_slug = '', $include_branding = false, $include_examples = true ) {
+    public static function build_pack( $post_ids = array(), $collection_slug = '', $include_branding = false, $include_examples = true, $include_custom_css = false ) {
         $args = array(
             'post_type'      => RCL_Library::POST_TYPE,
             'post_status'    => array( 'publish', 'draft', 'private' ),
@@ -44,7 +44,7 @@ final class RCL_Exporter {
         );
 
         if ( $include_branding ) {
-            $pack['branding'] = self::export_branding( $settings );
+            $pack['branding'] = self::export_branding( $settings, $include_custom_css );
         }
 
         $collection_ids = array();
@@ -183,7 +183,7 @@ final class RCL_Exporter {
         return $candidate;
     }
 
-    private static function export_branding( $settings ) {
+    private static function export_branding( $settings, $include_custom_css = false ) {
         $keys = array(
             'title',
             'eyebrow',
@@ -198,6 +198,24 @@ final class RCL_Exporter {
             'muted_color',
             'border_color',
             'layout_preset',
+            'style_isolation',
+            'typography_mode',
+            'body_font_preset',
+            'heading_font_preset',
+            'accent_font_preset',
+            'code_font_preset',
+            'body_font_custom',
+            'heading_font_custom',
+            'accent_font_custom',
+            'code_font_custom',
+            'base_font_size',
+            'line_height',
+            'content_alignment',
+            'hero_alignment',
+            'card_alignment',
+            'content_width',
+            'border_radius',
+            'code_font_size',
             'show_hero',
             'show_stats',
             'show_start_here',
@@ -208,6 +226,12 @@ final class RCL_Exporter {
         foreach ( $keys as $key ) {
             $branding[ $key ] = $settings[ $key ];
         }
+
+        if ( $include_custom_css && '' !== trim( (string) $settings['custom_css'] ) ) {
+            $branding['custom_css']         = $settings['custom_css'];
+            $branding['custom_css_enabled'] = $settings['custom_css_enabled'];
+        }
+
         return $branding;
     }
 
@@ -225,7 +249,12 @@ final class RCL_Exporter {
                 'eyebrow'       => 'Optional organization or descriptor',
                 'intro'         => 'Optional introductory text.',
                 'primary_color' => '#203a5f',
-                'accent_color'  => '#5f9bbc',
+                'accent_color'      => '#5f9bbc',
+                'typography_mode'    => 'plugin',
+                'content_alignment'  => 'start',
+                'hero_alignment'     => 'start',
+                'card_alignment'     => 'start',
+                'style_isolation'    => 'standard',
             ),
             'collections' => array(
                 array(

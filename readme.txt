@@ -4,7 +4,7 @@ Tags: code library, documentation, snippets, knowledge base, developer tools
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 2.1.0
+Stable tag: 2.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -25,9 +25,9 @@ Code entries can include:
 * Multiple working-example screenshots with type, alternative text, caption, and order
 * Collections, statuses, and tags
 
-Version 2 installs without bundled organization-specific code or source archives. Administrators can import and export validated JSON/TXT packs or portable ZIP packs containing screenshots, customize the library title and logo, choose colors and layout presets, and publish the library using a block or shortcode.
+Version 2 installs without bundled organization-specific code or source archives. Administrators can import and export validated JSON/TXT packs or portable ZIP packs containing screenshots, customize branding, typography, alignment, theme isolation, sizing, and Advanced CSS, and publish the library using a block or shortcode.
 
-Stored code is never evaluated, injected, or executed by the plugin.
+Stored code entries are never evaluated, injected, or executed by the plugin. Advanced CSS is a separate administrator-controlled appearance setting and does not execute code-entry content.
 
 == Installation ==
 
@@ -48,13 +48,21 @@ Yes. Content-only exports download as JSON. When screenshots are included, the p
 
 = Can I rebrand the front end? =
 
-Yes. The title, introduction, logo, colors, layout preset, content width, and visible sections can be customized without editing plugin files.
+Yes. The title, introduction, logo, colors, layout preset, typography, alignment, content width, theme isolation, visible sections, and optional Advanced CSS can be customized without editing plugin files.
 
 = Will version 2 preserve Missouri Accessibility Library v1 entries? =
 
 Yes. Version 2 retains the original internal content identifiers and supports the legacy shortcodes and block rendering.
 
 == Changelog ==
+
+= 2.2.0 =
+* Added alignment controls for general content, hero content, and cards.
+* Added theme-style isolation modes for more consistent display across themes.
+* Added plugin, inherited, and custom typography modes with font-stack selectors.
+* Added base font-size and line-height controls.
+* Added a native WordPress Advanced CSS editor with enable/disable and previous-version restore controls.
+* Added typography, alignment, sizing, and optional Advanced CSS to branding import/export.
 
 = 2.1.0 =
 * Added multiple working-example screenshots per code entry.

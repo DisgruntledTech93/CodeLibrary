@@ -1,6 +1,6 @@
 # Library Pack Schema
 
-Reference Code Library 2.1 accepts `.json`, `.txt`, and portable `.zip` files whose contents are valid JSON and whose root `schema` value is:
+Reference Code Library 2.2 accepts `.json`, `.txt`, and portable `.zip` files whose contents are valid JSON and whose root `schema` value is:
 
 ```json
 "reference-code-library/v2"
@@ -83,9 +83,16 @@ Supported optional values include:
 - `primary_color`, `secondary_color`, `accent_color`, and `focus_color`
 - `background_color`, `card_color`, `text_color`, `muted_color`, and `border_color`
 - `layout_preset`: `classic`, `minimal`, or `documentation`
+- `style_isolation`: `standard` or `relaxed`
+- `typography_mode`: `plugin`, `inherit`, or `custom`
+- `body_font_preset`, `heading_font_preset`, `accent_font_preset`, and `code_font_preset`
+- Optional custom stacks: `body_font_custom`, `heading_font_custom`, `accent_font_custom`, and `code_font_custom`
+- `base_font_size`, `line_height`, `content_width`, `border_radius`, and `code_font_size`
+- `content_alignment`, `hero_alignment`, and `card_alignment`: `start` or `center`
 - `show_hero`, `show_stats`, `show_start_here`, and `show_collection_descriptions`
+- `custom_css` and `custom_css_enabled` when Advanced CSS was explicitly included during export
 
-Branding is only applied when the administrator checks the branding option during import. Logos are intentionally excluded from packs and remain under local WordPress Media Library control.
+Branding is only applied when the administrator checks the branding option during import. Logos are intentionally excluded from packs and remain under local WordPress Media Library control. Advanced CSS is excluded from exports unless the separate export checkbox is selected.
 
 ## Working-example screenshots
 
