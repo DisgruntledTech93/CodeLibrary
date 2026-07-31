@@ -1,13 +1,5 @@
 # Changelog
 
-## 2.2.1
-
-- Changed the plugin publisher to ReTechX LLC.
-- Updated the repository README and WordPress plugin readme.
-- Removed public-facing references to the predecessor organization.
-- Reworded legacy migration messaging using generic terminology.
-- Preserved all existing entries, settings, shortcodes, blocks, and internal compatibility identifiers.
-
 ## 2.2.0
 
 - Added explicit start/left or centered alignment controls for general content, hero content, and cards.

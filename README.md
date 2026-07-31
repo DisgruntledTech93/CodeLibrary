@@ -2,11 +2,9 @@
 
 Reference Code Library is a generic WordPress plugin for publishing a searchable, theme-independent library of documented code examples.
 
-Developed and maintained by **ReTechX LLC**.
-
 The plugin stores code entries as inert text. It does not evaluate PHP, inject JavaScript, apply CSS stored in entries, or execute imported snippets. Version 2.2 adds a separate administrator-controlled Advanced CSS setting for the library presentation itself.
 
-## Current Version: 2.2.1
+## Version 2.2.0
 
 Version 2 separates the library engine from the content it contains:
 
@@ -34,7 +32,7 @@ Version 2 separates the library engine from the content it contains:
 
 ## Installation
 
-1. When a legacy predecessor version is installed, deactivate it first. Do not delete its content until the migration has been verified.
+1. When Missouri Accessibility Library v1 is installed, deactivate it first. Do not uninstall its content.
 2. Upload the `reference-code-library` folder to `/wp-content/plugins/`, or install the ZIP through WordPress.
 3. Activate **Reference Code Library**.
 4. Open **Code Library → Add Code** to create entries manually, attach working-example screenshots, or **Code Library → Import / Export** to import a JSON, TXT, or portable ZIP pack.
@@ -48,7 +46,13 @@ Version 2 separates the library engine from the content it contains:
 [code_entry slug="visible-focus-example"]
 ```
 
-Legacy predecessor shortcodes remain supported for existing installations.
+Legacy v1 shortcodes remain supported:
+
+```text
+[mo_accessibility_library]
+[mo_accessibility_collection slug="css-patterns"]
+[mo_accessibility_pattern slug="visible-focus-example"]
+```
 
 ## Library-pack schema
 
@@ -86,9 +90,7 @@ Scope rules to `.rcl-library`, omit `<style>` tags, and keep site-specific CSS o
 
 ## Upgrade compatibility
 
-Reference Code Library retains legacy internal post-type, taxonomy, metadata, shortcode, and block identifiers so existing libraries remain available after an upgrade.
-
-These identifiers are implementation details retained for data compatibility. All public-facing labels, documentation, branding, and package formats use the generic Reference Code Library name.
+The plugin intentionally retains the original internal post type, taxonomy, and metadata identifiers from Missouri Accessibility Library v1. Existing entries remain visible when v2 replaces v1. User-facing labels and new package formats are generic.
 
 ## Development notes
 
@@ -96,12 +98,6 @@ These identifiers are implementation details retained for data compatibility. Al
 - PHP 7.4 or later
 - No build process is required
 - Run `php -l` against PHP files before packaging
-
-## Publisher
-
-Reference Code Library is developed and maintained by **ReTechX LLC**.
-
-Copyright © 2026 ReTechX LLC.
 
 ## License
 

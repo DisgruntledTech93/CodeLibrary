@@ -4,7 +4,7 @@ Tags: code library, documentation, snippets, knowledge base, developer tools
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 2.2.1
+Stable tag: 2.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -13,8 +13,6 @@ Build, brand, import, export, and publish a searchable reference library of docu
 == Description ==
 
 Reference Code Library turns WordPress into a portable, theme-independent code knowledge base.
-
-Developed and maintained by ReTechX LLC.
 
 Code entries can include:
 
@@ -52,18 +50,11 @@ Yes. Content-only exports download as JSON. When screenshots are included, the p
 
 Yes. The title, introduction, logo, colors, layout preset, typography, alignment, content width, theme isolation, visible sections, and optional Advanced CSS can be customized without editing plugin files.
 
-= Will upgrades preserve existing legacy entries? =
+= Will version 2 preserve Missouri Accessibility Library v1 entries? =
 
-Yes. Reference Code Library retains legacy internal content identifiers, shortcodes, and block compatibility so existing entries remain available.
+Yes. Version 2 retains the original internal content identifiers and supports the legacy shortcodes and block rendering.
 
 == Changelog ==
-
-= 2.2.1 =
-* Changed the plugin publisher to ReTechX LLC.
-* Updated repository and WordPress plugin documentation.
-* Removed public-facing references to the predecessor organization.
-* Reworded legacy migration notices using generic terminology.
-* Preserved all existing content and legacy internal compatibility.
 
 = 2.2.0 =
 * Added alignment controls for general content, hero content, and cards.
