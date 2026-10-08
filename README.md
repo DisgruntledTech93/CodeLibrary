@@ -6,7 +6,7 @@ Developed and maintained by **ReTechX LLC**.
 
 The plugin stores code entries as inert text. It does not evaluate PHP, inject JavaScript, apply CSS stored in entries, or execute imported snippets. Version 2.2 adds a separate administrator-controlled Advanced CSS setting for the library presentation itself.
 
-## Current Version: 2.2.1
+## Current Version: 2.2.2
 
 Version 2 separates the library engine from the content it contains:
 
