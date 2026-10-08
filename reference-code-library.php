@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Reference Code Library
  * Description: Build, illustrate, brand, import, export, and publish a searchable reference library of code examples without executing the stored code.
- * Version: 2.2.1
+ * Version: 2.2.2
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * Author: ReTechX LLC
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'RCL_VERSION', '2.2.1' );
+define( 'RCL_VERSION', '2.2.2' );
 define( 'RCL_FILE', __FILE__ );
 define( 'RCL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'RCL_URL', plugin_dir_url( __FILE__ ) );

@@ -1050,7 +1050,9 @@ final class RCL_Library {
                 echo '<section class="rcl-detail"><h3>Use it when</h3><p>' . esc_html( $use_when ) . '</p></section>';
             }
             if ( $notes ) {
-                echo '<section class="rcl-detail"><h3>Implementation notes</h3><p>' . esc_html( $notes ) . '</p></section>';
+                echo '<section class="rcl-detail"><h3>Implementation notes</h3>';
+                echo wpautop( esc_html( $notes ) );
+                echo '</section>';
             }
             echo '</div>';
         }

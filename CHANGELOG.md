@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.2
+
+- Fixed Implementation Notes formatting to preserve paragraphs and line breaks.
+- Improved readability for multi-section implementation documentation.
+- Preserved existing Code Library entries, metadata, and functionality.
+
 ## 2.2.1
 
 - Changed the plugin publisher to ReTechX LLC.

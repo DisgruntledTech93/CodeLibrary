@@ -4,7 +4,7 @@ Tags: code library, documentation, snippets, knowledge base, developer tools
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 2.2.1
+Stable tag: 2.2.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -57,6 +57,11 @@ Yes. The title, introduction, logo, colors, layout preset, typography, alignment
 Yes. Reference Code Library retains legacy internal content identifiers, shortcodes, and block compatibility so existing entries remain available.
 
 == Changelog ==
+
+= 2.2.2 =
+* Fixed Implementation Notes rendering to preserve paragraphs and line breaks.
+* Improved readability of multi-section technical documentation.
+
 
 = 2.2.1 =
 * Changed the plugin publisher to ReTechX LLC.
