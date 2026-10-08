@@ -1,0 +1,31 @@
+/* Colibri: keep PDF/Excel file icons beside document links.
+ * Applies only to .ul-list-icon links with a direct .afa-file-icon child.
+ * The file icon is injected after Colibri's .list-item-text-wrapper.
+ */
+
+/* Keep document text and file icons together */
+.ul-list-icon li.list-item a.item-link:has(> .afa-file-icon) {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 5px;
+}
+
+/* Allow text wrapper to share space with the file icon */
+.ul-list-icon li.list-item a.item-link:has(> .afa-file-icon)
+.list-item-text-wrapper {
+    display: inline-flex !important;
+    flex: 0 1 auto;
+    width: auto !important;
+    max-width: 100%;
+}
+
+/* Keep document icons alongside the link text */
+.ul-list-icon li.list-item a.item-link > .afa-file-icon {
+    display: inline-block !important;
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    vertical-align: baseline;
+    margin: 0;
+}
